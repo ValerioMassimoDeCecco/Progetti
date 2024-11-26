@@ -2,12 +2,14 @@ const form = document.getElementById('password-form');
 const passwordList = document.getElementById('password-list');
 const searchInput = document.getElementById('search');
 const message = document.getElementById('message');
+const showPasswordCheckbox = document.getElementById('show-password');
+const passwordInput = document.getElementById('password');
 
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   const site = document.getElementById('site').value;
   const username = document.getElementById('username').value;
-  const password = document.getElementById('password').value;
+  const password = passwordInput.value;
 
   const newEntry = { site, username, password };
   const storage = await browser.storage.local.get('passwords');
@@ -31,26 +33,54 @@ async function renderPasswords(filter = '') {
   filteredPasswords.forEach(({ site, username, password }, index) => {
     const li = document.createElement('li');
     li.innerHTML = `
-      <strong>${site}</strong> - ${username} - ${password}
+      <strong>${site}</strong> - ${username}
       <button data-index="${index}" class="delete-button">Elimina</button>
+      <button data-index="${index}" class="copy-button">Copia</button>
     `;
     passwordList.appendChild(li);
-  });
 
-  document.querySelectorAll('.delete-button').forEach(button =>
-    button.addEventListener('click', async (e) => {
-      const index = e.target.getAttribute('data-index');
-      passwords.splice(index, 1);
-      await browser.storage.local.set({ passwords });
-      showMessage("Credenziale eliminata.");
-      renderPasswords(filter);
-    })
-  );
+    // Gestione del clic per copiare la password
+    const copyButton = li.querySelector('.copy-button');
+    copyButton.addEventListener('click', () => {
+      navigator.clipboard.writeText(password).then(() => {
+        showMessage("Password copiata negli appunti.");
+      }).catch(() => {
+        showMessage("Errore nel copiare la password.");
+      });
+    });
+
+    // Gestione del clic per eliminare
+    const deleteButton = li.querySelector('.delete-button');
+    deleteButton.addEventListener('click', async () => {
+      const confirmed = confirm(`Sei sicuro di voler eliminare la credenziale per ${site}?`);
+      if (confirmed) {
+        passwords.splice(index, 1);
+        await browser.storage.local.set({ passwords });
+        showMessage("Credenziale eliminata.");
+        renderPasswords(filter);
+      }
+    });
+
+    // Cliccando sul sito, autocompleta i campi
+    li.addEventListener('click', () => {
+      document.getElementById('site').value = site;
+      document.getElementById('username').value = username;
+      document.getElementById('password').value = password;
+    });
+  });
 }
 
 searchInput.addEventListener('input', () => {
   const filter = searchInput.value;
   renderPasswords(filter);
+});
+
+showPasswordCheckbox.addEventListener('change', () => {
+  if (showPasswordCheckbox.checked) {
+    passwordInput.type = 'text';
+  } else {
+    passwordInput.type = 'password';
+  }
 });
 
 function showMessage(msg) {

@@ -53,7 +53,7 @@ li {
   border-radius: 5px;
 }
 
-.delete-button {
+.delete-button, .copy-button {
   background-color: #FF4136;
   color: white;
   border: none;
@@ -62,8 +62,16 @@ li {
   cursor: pointer;
 }
 
-.delete-button:hover {
+.delete-button:hover, .copy-button:hover {
   background-color: #C0392B;
+}
+
+.copy-button {
+  background-color: #28a745;
+}
+
+.copy-button:hover {
+  background-color: #218838;
 }
 
 #search {
