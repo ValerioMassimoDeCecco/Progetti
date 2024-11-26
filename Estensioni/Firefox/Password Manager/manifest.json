@@ -2,8 +2,12 @@
   "manifest_version": 2,
   "name": "Password Manager",
   "version": "1.0",
-  "description": "Gestisce le password in modo semplice.",
-  "permissions": ["storage", "activeTab"],
+  "description": "Gestisce le password e tiene traccia dei siti visitati.",
+  "permissions": [
+    "storage", 
+    "activeTab", 
+    "tabs"
+  ],
   "host_permissions": ["<all_urls>"],
   "background": {
     "scripts": ["background.js"],

