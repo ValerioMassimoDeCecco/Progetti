@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Password Manager</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <h1>Gestione Password</h1>
+  <form id="password-form">
+    <input type="text" id="site" placeholder="Sito web" required>
+    <input type="text" id="username" placeholder="Nome utente" required>
+    <input type="password" id="password" placeholder="Password" required>
+    <button type="submit">Aggiungi Credenziale</button>
+  </form>
+  <input type="text" id="search" placeholder="Cerca...">
+  <ul id="password-list"></ul>
+  <div id="message" class="hidden"></div>
+  <script src="popup.js"></script>
+</body>
+</html>
