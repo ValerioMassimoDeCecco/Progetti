@@ -5,6 +5,9 @@ const message = document.getElementById('message');
 const showPasswordCheckbox = document.getElementById('show-password');
 const passwordInput = document.getElementById('password');
 
+// Usa 'chrome' se 'browser' non è definito
+const storage = typeof browser !== 'undefined' ? browser.storage : chrome.storage;
+
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   const site = document.getElementById('site').value;
@@ -12,10 +15,10 @@ form.addEventListener('submit', async (e) => {
   const password = passwordInput.value;
 
   const newEntry = { site, username, password };
-  const storage = await browser.storage.local.get('passwords');
-  const passwords = storage.passwords || [];
+  const storageData = await storage.local.get('passwords');
+  const passwords = storageData.passwords || [];
   passwords.push(newEntry);
-  await browser.storage.local.set({ passwords });
+  await storage.local.set({ passwords });
 
   showMessage("Credenziale aggiunta con successo!");
   renderPasswords();
@@ -24,8 +27,8 @@ form.addEventListener('submit', async (e) => {
 
 async function renderPasswords(filter = '') {
   passwordList.innerHTML = '';
-  const storage = await browser.storage.local.get('passwords');
-  const passwords = storage.passwords || [];
+  const storageData = await storage.local.get('passwords');
+  const passwords = storageData.passwords || [];
   const filteredPasswords = passwords.filter(({ site }) =>
     site.toLowerCase().includes(filter.toLowerCase())
   );
@@ -55,7 +58,7 @@ async function renderPasswords(filter = '') {
       const confirmed = confirm(`Sei sicuro di voler eliminare la credenziale per ${site}?`);
       if (confirmed) {
         passwords.splice(index, 1);
-        await browser.storage.local.set({ passwords });
+        await storage.local.set({ passwords });
         showMessage("Credenziale eliminata.");
         renderPasswords(filter);
       }

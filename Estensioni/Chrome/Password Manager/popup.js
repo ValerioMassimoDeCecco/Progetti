@@ -1,81 +1,95 @@
 const form = document.getElementById('password-form');
 const passwordList = document.getElementById('password-list');
 const searchInput = document.getElementById('search');
-const messageDiv = document.getElementById('message');
+const message = document.getElementById('message');
+const showPasswordCheckbox = document.getElementById('show-password');
+const passwordInput = document.getElementById('password');
 
-function renderPasswords(passwords) {
-  passwordList.innerHTML = '';
-  passwords.forEach((password, index) => {
-    const li = document.createElement('li');
-    li.innerHTML = `
-      <span><strong>${password.site}</strong><br> 
-        ${password.username} <br>
-        <span class="password-display">${password.password}</span>
-        <button class="copy-button" onclick="copyPassword('${password.password}')">Copia</button>
-        <button class="delete-button" onclick="deletePassword(${index})">Elimina</button>
-      </span>
-    `;
-    passwordList.appendChild(li);
-  });
-}
+// Usa 'chrome' se 'browser' non è definito
+const storage = typeof browser !== 'undefined' ? browser.storage : chrome.storage;
 
-function copyPassword(password) {
-  navigator.clipboard.writeText(password).then(() => {
-    showMessage('Password copiata!');
-  });
-}
-
-function deletePassword(index) {
-  chrome.storage.local.get('passwords', (result) => {
-    const passwords = result.passwords || [];
-    passwords.splice(index, 1);
-    chrome.storage.local.set({ passwords }, () => {
-      showMessage('Password eliminata!');
-      renderPasswords(passwords);
-    });
-  });
-}
-
-function showMessage(message) {
-  messageDiv.textContent = message;
-  messageDiv.classList.remove('hidden');
-  setTimeout(() => {
-    messageDiv.classList.add('hidden');
-  }, 2000);
-}
-
-form.addEventListener('submit', (e) => {
+form.addEventListener('submit', async (e) => {
   e.preventDefault();
   const site = document.getElementById('site').value;
   const username = document.getElementById('username').value;
-  const password = document.getElementById('password').value;
+  const password = passwordInput.value;
 
   const newEntry = { site, username, password };
-  
-  chrome.storage.local.get('passwords', (result) => {
-    const passwords = result.passwords || [];
-    passwords.push(newEntry);
-    chrome.storage.local.set({ passwords }, () => {
-      showMessage("Credenziale aggiunta con successo!");
-      renderPasswords(passwords);
+  const storageData = await storage.local.get('passwords');
+  const passwords = storageData.passwords || [];
+  passwords.push(newEntry);
+  await storage.local.set({ passwords });
+
+  showMessage("Credenziale aggiunta con successo!");
+  renderPasswords();
+  form.reset();
+});
+
+async function renderPasswords(filter = '') {
+  passwordList.innerHTML = '';
+  const storageData = await storage.local.get('passwords');
+  const passwords = storageData.passwords || [];
+  const filteredPasswords = passwords.filter(({ site }) =>
+    site.toLowerCase().includes(filter.toLowerCase())
+  );
+
+  filteredPasswords.forEach(({ site, username, password }, index) => {
+    const li = document.createElement('li');
+    li.innerHTML = `
+      <strong>${site}</strong> - ${username}
+      <button data-index="${index}" class="delete-button">Elimina</button>
+      <button data-index="${index}" class="copy-button">Copia</button>
+    `;
+    passwordList.appendChild(li);
+
+    // Gestione del clic per copiare la password
+    const copyButton = li.querySelector('.copy-button');
+    copyButton.addEventListener('click', () => {
+      navigator.clipboard.writeText(password).then(() => {
+        showMessage("Password copiata negli appunti.");
+      }).catch(() => {
+        showMessage("Errore nel copiare la password.");
+      });
+    });
+
+    // Gestione del clic per eliminare
+    const deleteButton = li.querySelector('.delete-button');
+    deleteButton.addEventListener('click', async () => {
+      const confirmed = confirm(`Sei sicuro di voler eliminare la credenziale per ${site}?`);
+      if (confirmed) {
+        passwords.splice(index, 1);
+        await storage.local.set({ passwords });
+        showMessage("Credenziale eliminata.");
+        renderPasswords(filter);
+      }
+    });
+
+    // Cliccando sul sito, autocompleta i campi
+    li.addEventListener('click', () => {
+      document.getElementById('site').value = site;
+      document.getElementById('username').value = username;
+      document.getElementById('password').value = password;
     });
   });
+}
+
+searchInput.addEventListener('input', () => {
+  const filter = searchInput.value;
+  renderPasswords(filter);
 });
 
-searchInput.addEventListener('input', (e) => {
-  const searchQuery = e.target.value.toLowerCase();
-  chrome.storage.local.get('passwords', (result) => {
-    const passwords = result.passwords || [];
-    const filteredPasswords = passwords.filter(password =>
-      password.site.toLowerCase().includes(searchQuery) ||
-      password.username.toLowerCase().includes(searchQuery)
-    );
-    renderPasswords(filteredPasswords);
-  });
+showPasswordCheckbox.addEventListener('change', () => {
+  if (showPasswordCheckbox.checked) {
+    passwordInput.type = 'text';
+  } else {
+    passwordInput.type = 'password';
+  }
 });
 
-// Caricamento iniziale dei dati
-chrome.storage.local.get('passwords', (result) => {
-  const passwords = result.passwords || [];
-  renderPasswords(passwords);
-});
+function showMessage(msg) {
+  message.textContent = msg;
+  message.classList.remove('hidden');
+  setTimeout(() => message.classList.add('hidden'), 3000);
+}
+
+document.addEventListener('DOMContentLoaded', () => renderPasswords());
