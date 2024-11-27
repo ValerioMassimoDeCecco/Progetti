@@ -1,0 +1,18 @@
+<!-- templates/chat.html -->
+{% extends "base.html" %}
+{% block content %}
+<h1>Chat con {{ username }}</h1>
+<div class="chat-container">
+    {% for message in chat_history %}
+        {% set sender, text = message.split(': ', 1) %}
+        <div class="chat-message {% if sender == session['username'] %}sent{% else %}received{% endif %}">
+            <strong>{{ sender }}:</strong> {{ text }}
+        </div>
+    {% endfor %}
+</div>
+<form method="post">
+    <input type="text" name="message" placeholder="Scrivi un messaggio" required>
+    <button type="submit">Invia</button>
+</form>
+<a href="{{ url_for('search') }}">Torna indietro</a>
+{% endblock %}
