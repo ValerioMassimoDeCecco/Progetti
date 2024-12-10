@@ -42,7 +42,7 @@ function startChat() {
         } else if (data.type === 'peerDisconnected') {
             addMessage('Your partner has disconnected.', 'system');
         } else if (data.type === 'message') {
-            addMessage(`Stranger: ${data.message}`, 'received');
+            addMessage(`${data.message}`, 'received');
         }
     });
 

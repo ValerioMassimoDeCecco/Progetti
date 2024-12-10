@@ -6,11 +6,33 @@
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
         
+        :root {
+            --bg-color: url('wp.jpg') no-repeat center center fixed;
+            --text-color: #24292e;
+            --chat-bg: rgba(255, 255, 255, 0.9);
+            --messages-bg: #f6f8fa;
+            --border-color: #e1e4e8;
+            --primary-color: #0366d6;
+            --secondary-color: #2c974b;
+            --scrollbar-color: #0366d6;
+        }
+
+        body.dark {
+            --bg-color: url('wp.jpg') no-repeat center center fixed;
+            --text-color: #c9d1d9;
+            --chat-bg: rgba(22, 27, 34, 0.9);
+            --messages-bg: #21262d;
+            --border-color: #30363d;
+            --primary-color: #58a6ff;
+            --secondary-color: #1f6feb;
+            --scrollbar-color: #58a6ff;
+        }
+        
         body {
             font-family: 'Roboto', sans-serif;
-            background: url('wp.jpg') no-repeat center center fixed;
+            background: var(--bg-color);
             background-size: cover;
-            color: #c9d1d9;
+            color: var(--text-color);
             margin: 0;
             display: flex;
             flex-direction: column;
@@ -19,22 +41,40 @@
             height: 100vh;
             transition: background-color 0.5s ease;
         }
+        
+        #mode-toggle {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+        
+        #mode-toggle:hover {
+            background-color: var(--secondary-color);
+        }
+
         h1 {
             font-size: 2.5rem;
             margin-bottom: 20px;
-            color: #58a6ff;
+            color: var(--primary-color);
             transition: color 0.3s ease;
         }
         #loading {
             display: none;
             font-size: 1rem;
             margin-bottom: 15px;
-            color: #8b949e;
+            color: var(--text-color);
             transition: opacity 0.3s ease;
         }
         #chat {
-            background-color: rgba(22, 27, 34, 0.9); /* Colore di sfondo semitrasparente */
-            border: 1px solid #30363d;
+            background-color: var(--chat-bg);
+            border: 1px solid var(--border-color);
             border-radius: 8px;
             box-shadow: 0 4px 10px rgba(0, 0, 0, 0.6);
             max-width: 450px;
@@ -46,13 +86,13 @@
         #messages {
             height: 300px;
             overflow-y: auto;
-            border: 1px solid #30363d;
+            border: 1px solid var(--border-color);
             border-radius: 6px;
-            background-color: #21262d;
+            background-color: var(--messages-bg);
             padding: 15px;
             margin-bottom: 15px;
             scrollbar-width: thin;
-            scrollbar-color: #58a6ff #161b22;
+            scrollbar-color: var(--scrollbar-color) transparent;
             display: flex;
             flex-direction: column;
         }
@@ -60,40 +100,40 @@
             width: 6px;
         }
         #messages::-webkit-scrollbar-thumb {
-            background-color: #58a6ff;
+            background-color: var(--scrollbar-color);
             border-radius: 3px;
         }
         #messages::-webkit-scrollbar-track {
-            background-color: #161b22;
+            background-color: transparent;
         }
         #messageInput {
             width: calc(100% - 80px);
             padding: 10px;
-            border: 1px solid #30363d;
+            border: 1px solid var(--border-color);
             border-radius: 6px;
-            background-color: #161b22;
-            color: #c9d1d9;
+            background-color: var(--messages-bg);
+            color: var(--text-color);
             margin-right: 10px;
             outline: none;
             font-size: 1rem;
             transition: border-color 0.3s ease, box-shadow 0.3s ease;
         }
         #messageInput:focus {
-            border-color: #58a6ff;
+            border-color: var(--primary-color);
             box-shadow: 0 0 5px rgba(88, 166, 255, 0.5);
         }
         button {
             padding: 10px 15px;
             border: none;
             border-radius: 6px;
-            background-color: #58a6ff;
+            background-color: var(--primary-color);
             color: #fff;
             font-size: 1rem;
             cursor: pointer;
             transition: background-color 0.3s ease, transform 0.3s ease;
         }
         button:hover {
-            background-color: #1f6feb;
+            background-color: var(--secondary-color);
             transform: scale(1.05);
         }
         button:active {
@@ -119,7 +159,7 @@
             max-width: 70%;
         }
         .message.sent {
-            background-color: #007BFF;
+            background-color: var(--primary-color);
             color: white;
             align-self: flex-end;
         }
@@ -131,6 +171,7 @@
     </style>
 </head>
 <body>
+    <button id="mode-toggle">☀️/🌙</button>
     <h1>Omegle Clone</h1>
     <div id="loading">Ricerca peer in corso...</div>
     <button id="startButton">Start Chatting</button>
@@ -139,6 +180,23 @@
         <button id="closeButton">Close Chat</button>
         <input id="messageInput" type="text" placeholder="Type a message...">
     </div>
+    <script>
+        const modeToggle = document.getElementById('mode-toggle');
+        
+        modeToggle.addEventListener('click', () => {
+            document.body.classList.toggle('dark');
+            
+            // Optional: Store user's preference in localStorage
+            const isDark = document.body.classList.contains('dark');
+            localStorage.setItem('darkMode', isDark);
+        });
+
+        // Check user's previous preference on page load
+        const savedMode = localStorage.getItem('darkMode');
+        if (savedMode === 'true') {
+            document.body.classList.add('dark');
+        }
+    </script>
     <script src="script.js"></script>
 </body>
 </html>
