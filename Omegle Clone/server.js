@@ -2,7 +2,8 @@ const http = require('http');
 const WebSocket = require('ws');
 const fs = require('fs');
 const path = require('path');
-const { v4: uuidv4 } = require('uuid'); // Importa il modulo uuid per generare ID unici
+const { v4: uuidv4 } = require('uuid');
+const geoip = require('geoip-lite');
 
 const server = http.createServer((req, res) => {
     if (req.method === 'GET') {
@@ -19,6 +20,9 @@ const server = http.createServer((req, res) => {
                 break;
             case '.css':
                 contentType = 'text/css';
+                break;
+            case '.mp3':
+                contentType = 'audio/mpeg';
                 break;
         }
 
@@ -48,12 +52,15 @@ let clients = [];
 
 wss.on('connection', (ws, req) => {
     const ip = req.socket.remoteAddress;
-    const chatID = uuidv4(); // Genera un nuovo ID unico per ogni connessione
-    const client = { ws, chatID, ip };
+    const chatID = uuidv4();
+    const geo = geoip.lookup(ip);
+    const country = geo ? geo.country : 'Unknown';
+    const client = { ws, chatID, ip, country };
 
     clients.push(client);
 
     ws.send(JSON.stringify({ type: 'chatID', chatID }));
+    broadcastUserCount();
 
     ws.on('message', (message) => {
         const data = JSON.parse(message);
@@ -67,6 +74,13 @@ wss.on('connection', (ws, req) => {
                 saveMessage(peer.chatID, peer.ip, data.message);
                 peer.ws.send(JSON.stringify({ type: 'message', message: data.message }));
             }
+        } else if (data.type === 'audio') {
+            const peer = ws.peer;
+            if (peer) {
+                saveAudio(chatID, ip, data.audio);
+                saveAudio(peer.chatID, peer.ip, data.audio);
+                peer.ws.send(JSON.stringify({ type: 'audio', audio: data.audio }));
+            }
         }
     });
 
@@ -76,20 +90,37 @@ wss.on('connection', (ws, req) => {
             ws.peer.peer = null;
             ws.peer.ws.send(JSON.stringify({ type: 'peerDisconnected' }));
         }
+        broadcastUserCount();
     });
 });
+
+function broadcastUserCount() {
+    const userCount = clients.length;
+    clients.forEach(client => {
+        if (client.ws.readyState === WebSocket.OPEN) {
+            client.ws.send(JSON.stringify({ type: 'updateUserCount', count: userCount }));
+        }
+    });
+}
 
 function matchClient(client) {
     const availableClients = clients.filter(c => c.ws !== client.ws && !c.ws.peer);
     if (availableClients.length > 0) {
         const peerClient = availableClients[0];
+
         client.ws.peer = peerClient;
         peerClient.ws.peer = client;
-        client.chatID = client.chatID;
-        peerClient.chatID = peerClient.chatID;
 
-        client.ws.send(JSON.stringify({ type: 'matchSuccess', chatID: client.chatID }));
-        peerClient.ws.send(JSON.stringify({ type: 'matchSuccess', chatID: peerClient.chatID }));
+        client.ws.send(JSON.stringify({ 
+            type: 'matchSuccess', 
+            chatID: client.chatID, 
+            peerCountry: peerClient.country 
+        }));
+        peerClient.ws.send(JSON.stringify({ 
+            type: 'matchSuccess', 
+            chatID: peerClient.chatID, 
+            peerCountry: client.country 
+        }));
     } else {
         client.ws.send(JSON.stringify({ type: 'matchPending' }));
     }
@@ -99,7 +130,6 @@ function saveMessage(chatID, ip, message) {
     const directory = path.join(__dirname, 'database');
     const filePath = path.join(directory, `${chatID}.txt`);
 
-    // Creare la directory se non esiste
     if (!fs.existsSync(directory)) {
         fs.mkdirSync(directory);
     }
@@ -108,6 +138,21 @@ function saveMessage(chatID, ip, message) {
     fs.appendFile(filePath, logMessage, err => {
         if (err) {
             console.error('Error saving message:', err);
+        }
+    });
+}
+
+function saveAudio(chatID, ip, audio) {
+    const directory = path.join(__dirname, 'database');
+    const filePath = path.join(directory, `${chatID}-${Date.now()}.mp3`);
+
+    if (!fs.existsSync(directory)) {
+        fs.mkdirSync(directory);
+    }
+
+    fs.writeFile(filePath, Buffer.from(audio, 'base64'), (err) => {
+        if (err) {
+            console.error('Error saving audio:', err);
         }
     });
 }
