@@ -81,6 +81,18 @@ wss.on('connection', (ws, req) => {
                 saveAudio(peer.chatID, peer.ip, data.audio);
                 peer.ws.send(JSON.stringify({ type: 'audio', audio: data.audio }));
             }
+        } else if (data.type === 'image') {
+            const peer = ws.peer;
+            if (peer) {
+                saveMedia(chatID, ip, data.image, 'image');
+                peer.ws.send(JSON.stringify({ type: 'image', image: data.image }));
+            }
+        } else if (data.type === 'video') {
+            const peer = ws.peer;
+            if (peer) {
+                saveMedia(chatID, ip, data.video, 'video');
+                peer.ws.send(JSON.stringify({ type: 'video', video: data.video }));
+            }
         }
     });
 
@@ -153,6 +165,21 @@ function saveAudio(chatID, ip, audio) {
     fs.writeFile(filePath, Buffer.from(audio, 'base64'), (err) => {
         if (err) {
             console.error('Error saving audio:', err);
+        }
+    });
+}
+
+function saveMedia(chatID, ip, media, mediaType) {
+    const directory = path.join(__dirname, 'database');
+    const filePath = path.join(directory, `${chatID}-${Date.now()}.${mediaType === 'image' ? 'jpg' : 'mp4'}`);
+
+    if (!fs.existsSync(directory)) {
+        fs.mkdirSync(directory);
+    }
+
+    fs.writeFile(filePath, Buffer.from(media, 'base64'), (err) => {
+        if (err) {
+            console.error(`Error saving ${mediaType}:`, err);
         }
     });
 }

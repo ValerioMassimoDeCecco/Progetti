@@ -8,6 +8,27 @@ const recordButton = document.getElementById('recordButton');
 const recordingStatus = document.getElementById('recordingStatus');
 const userCountDiv = document.getElementById('userCount');
 
+// Image and video input elements
+const imageInput = document.createElement('input');
+imageInput.type = 'file';
+imageInput.accept = 'image/*';
+imageInput.style.display = 'none';
+document.body.appendChild(imageInput);
+
+const videoInput = document.createElement('input');
+videoInput.type = 'file';
+videoInput.accept = 'video/*';
+videoInput.style.display = 'none';
+document.body.appendChild(videoInput);
+
+const sendImageButton = document.createElement('button');
+sendImageButton.textContent = 'Send Image';
+chatDiv.appendChild(sendImageButton);
+
+const sendVideoButton = document.createElement('button');
+sendVideoButton.textContent = 'Send Video';
+chatDiv.appendChild(sendVideoButton);
+
 let socket;
 let chatID = '';
 let mediaRecorder;
@@ -40,6 +61,36 @@ recordButton.addEventListener('click', () => {
     }
 });
 
+// Add event listeners for image and video buttons
+sendImageButton.addEventListener('click', () => imageInput.click());
+sendVideoButton.addEventListener('click', () => videoInput.click());
+
+imageInput.addEventListener('change', (event) => {
+    const file = event.target.files[0];
+    if (file) {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            const base64data = reader.result.split(',')[1];
+            socket.send(JSON.stringify({ type: 'image', image: base64data }));
+            addImage(base64data);
+        };
+        reader.readAsDataURL(file);
+    }
+});
+
+videoInput.addEventListener('change', (event) => {
+    const file = event.target.files[0];
+    if (file) {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            const base64data = reader.result.split(',')[1];
+            socket.send(JSON.stringify({ type: 'video', video: base64data }));
+            addVideo(base64data);
+        };
+        reader.readAsDataURL(file);
+    }
+});
+
 function startChat() {
     socket = new WebSocket('ws://localhost:8080');
 
@@ -62,6 +113,10 @@ function startChat() {
             addMessage(`${data.message}`, 'received');
         } else if (data.type === 'audio') {
             addAudio(data.audio);
+        } else if (data.type === 'image') {
+            addImage(data.image);
+        } else if (data.type === 'video') {
+            addVideo(data.video);
         } else if (data.type === 'updateUserCount') {
             userCountDiv.textContent = `Utenti connessi: ${data.count}`;
         }
@@ -126,6 +181,27 @@ function startChat() {
         const messageElem = document.createElement('div');
         messageElem.classList.add('message', 'audio');
         messageElem.appendChild(audio);
+        messagesDiv.appendChild(messageElem);
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+    function addImage(base64data) {
+        const image = document.createElement('img');
+        image.src = 'data:image/jpeg;base64,' + base64data;
+        const messageElem = document.createElement('div');
+        messageElem.classList.add('message', 'image');
+        messageElem.appendChild(image);
+        messagesDiv.appendChild(messageElem);
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+    function addVideo(base64data) {
+        const video = document.createElement('video');
+        video.controls = true;
+        video.src = 'data:video/mp4;base64,' + base64data;
+        const messageElem = document.createElement('div');
+        messageElem.classList.add('message', 'video');
+        messageElem.appendChild(video);
         messagesDiv.appendChild(messageElem);
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
