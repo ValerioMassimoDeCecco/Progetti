@@ -5,41 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Black Audio Player</title>
     <link rel="stylesheet" href="style.css">
-    <style>
-        #searchBarContainer {
-            position: fixed;
-            top: 10px;
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 1000;
-            width: 100%;
-            max-width: 600px;
-            text-align: center;
-        }
-        
-        #searchBar {
-            width: 100%;
-            max-width: 100%;
-            padding: 10px;
-            box-sizing: border-box;
-            border: 1px solid #ccc;
-            border-radius: 25px;
-            background: rgba(255, 255, 255, 0.8);
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-            transition: background 0.3s, box-shadow 0.3s;
-        }
-
-        #searchBar:focus {
-            background: rgba(255, 255, 255, 0.9);
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-        }
-    </style>
 </head>
 <body>
-    <div id="searchBarContainer">
-        <input type="text" id="searchBar" placeholder="Cerca canzone..." oninput="filterSongs()">
-    </div>
-    
     <div class="audio-list" id="audioList"></div>
 
     <div class="player-container">
@@ -56,9 +23,9 @@
                 <button onclick="previousTrack()">⏮</button>
                 <button class="play-pause" onclick="togglePlay()" id="playButton">▶</button>
                 <button onclick="nextTrack()">⏭</button>
-            </div>
-            <div class="volume-control">
-                <input type="range" id="volumeSlider" min="0" max="1" step="0.1" value="1">
+                <div class="volume-control">
+                    <input type="range" id="volumeSlider" min="0" max="1" step="0.1" value="1">
+                </div>
             </div>
         </div>
     </div>
@@ -82,9 +49,8 @@
         function renderAudioList() {
             const list = document.getElementById('audioList');
             list.innerHTML = audioFiles.map((file, index) => `
-                <div class="audio-item" 
-                     onclick="playTrack(${index})"
-                     style="--i: ${index};">
+                <div class="audio-item ${index === currentTrack ? 'active' : ''}" 
+                     onclick="playTrack(${index})">
                     ${file.split('/').pop()}
                 </div>
             `).join('');
@@ -102,18 +68,16 @@
             updatePlayButton();
 
             document.querySelectorAll('.audio-item')[index].classList.add('active');
+
             document.getElementById('currentTrackTitle').textContent = 
                 audioFiles[index].split('/').pop().replace(/\.[^/.]+$/, "");
         }
 
         function togglePlay() {
-            const playButton = document.getElementById('playButton');
             if (isPlaying) {
                 audioPlayer.pause();
-                playButton.classList.remove('playing');
             } else {
                 audioPlayer.play();
-                playButton.classList.add('playing');
             }
             isPlaying = !isPlaying;
             updatePlayButton();
@@ -169,17 +133,6 @@
             audioPlayer.currentTime = pos * audioPlayer.duration;
         });
 
-        document.getElementById('progressContainer').addEventListener('mousemove', (e) => {
-            const progressBar = document.getElementById('progressBar');
-            const rect = e.target.getBoundingClientRect();
-            const pos = (e.clientX - rect.left) / rect.width;
-            progressBar.style.transform = `scaleX(${1 + (pos * 0.1)})`;
-        });
-
-        document.getElementById('progressContainer').addEventListener('mouseleave', () => {
-            document.getElementById('progressBar').style.transform = 'scaleX(1)';
-        });
-
         function formatTime(seconds) {
             const minutes = Math.floor(seconds / 60);
             seconds = Math.floor(seconds % 60);
@@ -188,26 +141,6 @@
 
         updateVolumeVisual(1);
         loadAudioFiles();
-
-        function filterSongs() {
-            const searchTerm = document.getElementById('searchBar').value.toLowerCase();
-            const filteredFiles = audioFiles.filter(file => 
-                file.toLowerCase().includes(searchTerm)
-            );
-            renderFilteredAudioList(filteredFiles);
-        }
-
-        function renderFilteredAudioList(filteredFiles) {
-            const list = document.getElementById('audioList');
-            list.innerHTML = filteredFiles.map((file, index) => `
-                <div class="audio-item" 
-                     onclick="playTrack(${audioFiles.indexOf(file)})"
-                     style="--i: ${index};">
-                    ${file.split('/').pop()}
-                </div>
-            `).join('');
-        }
-
     </script>
 </body>
 </html>

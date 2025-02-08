@@ -1,7 +1,7 @@
 :root {
     --amoled-black: #000000;
     --spotify-green: #1DB954;
-    --dark-gray: #121212;
+    --dark-gray: rgba(18, 18, 18, 0.9);
     --text-primary: #FFFFFF;
     --text-secondary: #B3B3B3;
 }
@@ -15,82 +15,45 @@
 }
 
 body {
-    background: var(--amoled-black);
+    background: var(--amoled-black) url('wp.jpg') no-repeat center center fixed;
+    background-size: cover;
     color: var(--text-primary);
-    padding-bottom: 120px; /* Spazio per il player */
-    position: relative; /* Contesto per lo z-index */
+    padding-bottom: 120px;
 }
 
-/* Search Bar Styling */
-#searchBarContainer {
-    position: fixed;
-    top: 10px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 1000;
-    width: 95%;
-    max-width: 600px;
-    padding: 0 15px;
-}
-
-#searchBar {
-    width: 100%;
-    padding: 10px;
-    border: 1px solid #ccc;
-    border-radius: 25px;
-    background: rgba(255, 255, 255, 0.8);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    transition: background 0.3s, box-shadow 0.3s;
-}
-
-#searchBar:focus {
-    background: rgba(255, 255, 255, 0.9);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-}
-
-/* Audio List Container */
 .audio-list {
+    padding: 15px;
     max-width: 800px;
-    margin: 70px auto 0; /* Margine superiore per la search bar */
-    padding: 15px 15px 150px; /* Padding inferiore per il player */
-    max-height: calc(100vh - 160px); /* Altezza massima per lo scrolling */
-    overflow-y: scroll; /* Abilita lo scrolling */
-    scrollbar-width: none; /* Nasconde la scrollbar su Firefox */
-    -ms-overflow-style: none; /* Nasconde la scrollbar su IE/Edge */
-    -webkit-overflow-scrolling: touch; /* Scroll fluido su mobile */
-    scroll-behavior: smooth;
-}
-
-.audio-list::-webkit-scrollbar {
-    display: none; /* Nasconde la scrollbar su Chrome, Safari e Opera */
+    margin: 0 auto;
 }
 
 .audio-item {
-    background: var(--dark-gray);
+    background: rgba(40, 40, 40, 0.7);
     padding: 18px;
     margin-bottom: 8px;
     border-radius: 8px;
     cursor: pointer;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    will-change: transform, background;
-    animation: itemEntrance 0.6s ease backwards;
-    animation-delay: calc(var(--i) * 0.1s);
+    transition: transform 0.2s, background 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .audio-item:hover {
-    background: #1A1A1A;
-    transform: translateX(8px) scale(1.02);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    background: rgba(60, 60, 60, 0.8);
+    transform: translateX(4px);
 }
 
 .audio-item.active {
-    background: var(--spotify-green);
+    background: var(--spotify-green) !important;
     color: var(--amoled-black);
     font-weight: 500;
-    animation: wave 0.6s ease;
+    border-color: transparent;
 }
 
-/* Player Container */
 .player-container {
     position: fixed;
     bottom: 20px;
@@ -98,14 +61,13 @@ body {
     transform: translateX(-50%);
     width: 95%;
     max-width: 800px;
-    background: transparent; /* Sfondo completamente trasparente */
+    background: rgba(18, 18, 18, 0.7);
     border-radius: 12px;
     padding: 16px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2); /* Ombra leggera */
-    border: 1px solid rgba(255, 255, 255, 0.1); /* Bordo appena visibile */
-    backdrop-filter: blur(3px); /* Effetto blur minimo */
-    -webkit-backdrop-filter: blur(3px); /* Per compatibilità con Safari */
-    z-index: 999; /* Sopra la lista ma sotto la search bar */
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
 }
 
 .current-track {
@@ -116,16 +78,17 @@ body {
     overflow: hidden;
     text-overflow: ellipsis;
     max-width: 90%;
-    animation: fadeInTrack 0.5s ease forwards;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
 .progress-container {
     width: 100%;
     height: 3px;
-    background: #404040;
+    background: rgba(255, 255, 255, 0.1);
     border-radius: 2px;
     margin: 12px 0;
     cursor: pointer;
+    backdrop-filter: brightness(0.8);
 }
 
 .progress-bar {
@@ -133,24 +96,8 @@ body {
     background: var(--spotify-green);
     border-radius: 2px;
     width: 0;
-    transition: width 0.1s linear, transform 0.2s ease;
-}
-
-.progress-bar::after {
-    content: '';
-    position: absolute;
-    right: -6px;
-    top: -3px;
-    width: 12px;
-    height: 12px;
-    background: var(--spotify-green);
-    border-radius: 50%;
-    opacity: 0;
-    transition: opacity 0.2s ease;
-}
-
-.progress-container:hover .progress-bar::after {
-    opacity: 1;
+    transition: width 0.1s linear;
+    box-shadow: 0 0 8px rgba(29, 185, 84, 0.3);
 }
 
 .controls {
@@ -163,21 +110,24 @@ body {
 .main-controls {
     display: flex;
     align-items: center;
-    gap: 20px;
+    gap: 15px;
+    width: 100%;
 }
 
 button {
-    background: none;
+    background: rgba(255, 255, 255, 0.05);
     border: none;
     color: var(--text-primary);
     cursor: pointer;
     padding: 10px;
     border-radius: 50%;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: all 0.2s;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
 }
 
 button:hover {
-    transform: scale(1.1);
+    background: rgba(255, 255, 255, 0.15);
 }
 
 .play-pause {
@@ -188,15 +138,12 @@ button:hover {
     display: flex;
     justify-content: center;
     align-items: center;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.2s ease;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
-.play-pause:active {
-    transform: scale(0.9);
-}
-
-.play-pause.playing {
-    animation: pulse 1.5s infinite;
+.play-pause:hover {
+    transform: scale(1.05);
+    background: var(--text-primary);
 }
 
 .time-display {
@@ -208,23 +155,15 @@ button:hover {
 }
 
 .volume-control {
-    display: flex;
-    align-items: center;
-    gap: 8px;
     margin-left: auto;
-    padding-right: 15px;
-    transition: opacity 0.3s ease;
-}
-
-.volume-control:hover {
-    opacity: 0.9;
+    padding-right: 10px;
 }
 
 #volumeSlider {
     width: 100px;
     height: 4px;
     -webkit-appearance: none;
-    background: #404040;
+    background: rgba(255, 255, 255, 0.1);
     border-radius: 2px;
     outline: none;
 }
@@ -236,12 +175,8 @@ button:hover {
     background: var(--text-primary);
     border-radius: 50%;
     cursor: pointer;
-    transition: transform 0.2s ease, background 0.2s ease;
-}
-
-#volumeSlider:hover::-webkit-slider-thumb {
-    transform: scale(1.2);
-    background: var(--spotify-green);
+    transition: background 0.2s;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 #volumeSlider::-moz-range-thumb {
@@ -258,43 +193,13 @@ button:hover {
         to right,
         var(--spotify-green) 0%,
         var(--spotify-green) var(--volume-percent),
-        #404040 var(--volume-percent),
-        #404040 100%
+        rgba(255, 255, 255, 0.1) var(--volume-percent),
+        rgba(255, 255, 255, 0.1) 100%
     );
     border-radius: 2px;
 }
 
-/* Animazioni */
-@keyframes wave {
-    0% { transform: translateY(0); }
-    50% { transform: translateY(-3px); }
-    100% { transform: translateY(0); }
-}
-
-@keyframes pulse {
-    0% { transform: scale(1); }
-    50% { transform: scale(1.05); }
-    100% { transform: scale(1); }
-}
-
-@keyframes fadeInTrack {
-    from { opacity: 0; transform: translateY(5px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes itemEntrance {
-    from { opacity: 0; transform: translateY(20px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
-/* Responsive Design */
 @media (max-width: 600px) {
-    .audio-list {
-        margin-top: 60px;
-        padding: 10px 10px 130px; /* Padding inferiore ridotto per mobile */
-        max-height: calc(100vh - 140px);
-    }
-
     .audio-item {
         padding: 14px;
         font-size: 14px;
@@ -303,6 +208,8 @@ button:hover {
     .player-container {
         bottom: 10px;
         padding: 12px;
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
     }
 
     button {
