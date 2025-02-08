@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Black Audio Player</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        #searchBarContainer {
+            position: fixed;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            width: 100%;
+            max-width: 600px;
+            text-align: center;
+        }
+        
+        #searchBar {
+            width: 100%;
+            max-width: 100%;
+            padding: 10px;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 25px;
+            background: rgba(255, 255, 255, 0.8);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            transition: background 0.3s, box-shadow 0.3s;
+        }
+
+        #searchBar:focus {
+            background: rgba(255, 255, 255, 0.9);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+    </style>
+</head>
+<body>
+    <div id="searchBarContainer">
+        <input type="text" id="searchBar" placeholder="Cerca canzone..." oninput="filterSongs()">
+    </div>
+    
+    <div class="audio-list" id="audioList"></div>
+
+    <div class="player-container">
+        <div class="current-track" id="currentTrackTitle">Nessuna traccia selezionata</div>
+        <div class="time-display">
+            <span id="currentTime">0:00</span>
+            <span id="duration">0:00</span>
+        </div>
+        <div class="progress-container" id="progressContainer">
+            <div class="progress-bar" id="progressBar"></div>
+        </div>
+        <div class="controls">
+            <div class="main-controls">
+                <button onclick="previousTrack()">⏮</button>
+                <button class="play-pause" onclick="togglePlay()" id="playButton">▶</button>
+                <button onclick="nextTrack()">⏭</button>
+            </div>
+            <div class="volume-control">
+                <input type="range" id="volumeSlider" min="0" max="1" step="0.1" value="1">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let audioFiles = [];
+        let currentTrack = 0;
+        const audioPlayer = new Audio();
+        let isPlaying = false;
+
+        async function loadAudioFiles() {
+            try {
+                const response = await fetch('list_audio.php');
+                audioFiles = await response.json();
+                renderAudioList();
+            } catch (error) {
+                console.error('Errore nel caricamento dei file:', error);
+            }
+        }
+
+        function renderAudioList() {
+            const list = document.getElementById('audioList');
+            list.innerHTML = audioFiles.map((file, index) => `
+                <div class="audio-item" 
+                     onclick="playTrack(${index})"
+                     style="--i: ${index};">
+                    ${file.split('/').pop()}
+                </div>
+            `).join('');
+        }
+
+        function playTrack(index) {
+            document.querySelectorAll('.audio-item').forEach(item => {
+                item.classList.remove('active');
+            });
+
+            currentTrack = index;
+            audioPlayer.src = audioFiles[index];
+            audioPlayer.play();
+            isPlaying = true;
+            updatePlayButton();
+
+            document.querySelectorAll('.audio-item')[index].classList.add('active');
+            document.getElementById('currentTrackTitle').textContent = 
+                audioFiles[index].split('/').pop().replace(/\.[^/.]+$/, "");
+        }
+
+        function togglePlay() {
+            const playButton = document.getElementById('playButton');
+            if (isPlaying) {
+                audioPlayer.pause();
+                playButton.classList.remove('playing');
+            } else {
+                audioPlayer.play();
+                playButton.classList.add('playing');
+            }
+            isPlaying = !isPlaying;
+            updatePlayButton();
+        }
+
+        function updatePlayButton() {
+            const button = document.getElementById('playButton');
+            button.textContent = isPlaying ? '⏸' : '▶';
+        }
+
+        function nextTrack() {
+            document.querySelector('.audio-item.active')?.classList.remove('active');
+            currentTrack = (currentTrack + 1) % audioFiles.length;
+            playTrack(currentTrack);
+        }
+
+        function previousTrack() {
+            document.querySelector('.audio-item.active')?.classList.remove('active');
+            currentTrack = (currentTrack - 1 + audioFiles.length) % audioFiles.length;
+            playTrack(currentTrack);
+        }
+
+        const volumeSlider = document.getElementById('volumeSlider');
+        audioPlayer.volume = 1;
+
+        volumeSlider.addEventListener('input', (e) => {
+            audioPlayer.volume = e.target.value;
+            updateVolumeVisual(e.target.value);
+        });
+
+        function updateVolumeVisual(value) {
+            const percent = value * 100;
+            volumeSlider.style.setProperty('--volume-percent', `${percent}%`);
+        }
+
+        audioPlayer.ontimeupdate = () => {
+            const progress = (audioPlayer.currentTime / audioPlayer.duration) * 100;
+            document.getElementById('progressBar').style.width = `${progress}%`;
+            document.getElementById('currentTime').textContent = 
+                formatTime(audioPlayer.currentTime);
+        };
+
+        audioPlayer.onloadedmetadata = () => {
+            document.getElementById('duration').textContent = 
+                formatTime(audioPlayer.duration);
+        };
+
+        audioPlayer.onended = nextTrack;
+
+        document.getElementById('progressContainer').addEventListener('click', (e) => {
+            const rect = e.target.getBoundingClientRect();
+            const pos = (e.clientX - rect.left) / rect.width;
+            audioPlayer.currentTime = pos * audioPlayer.duration;
+        });
+
+        document.getElementById('progressContainer').addEventListener('mousemove', (e) => {
+            const progressBar = document.getElementById('progressBar');
+            const rect = e.target.getBoundingClientRect();
+            const pos = (e.clientX - rect.left) / rect.width;
+            progressBar.style.transform = `scaleX(${1 + (pos * 0.1)})`;
+        });
+
+        document.getElementById('progressContainer').addEventListener('mouseleave', () => {
+            document.getElementById('progressBar').style.transform = 'scaleX(1)';
+        });
+
+        function formatTime(seconds) {
+            const minutes = Math.floor(seconds / 60);
+            seconds = Math.floor(seconds % 60);
+            return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        }
+
+        updateVolumeVisual(1);
+        loadAudioFiles();
+
+        function filterSongs() {
+            const searchTerm = document.getElementById('searchBar').value.toLowerCase();
+            const filteredFiles = audioFiles.filter(file => 
+                file.toLowerCase().includes(searchTerm)
+            );
+            renderFilteredAudioList(filteredFiles);
+        }
+
+        function renderFilteredAudioList(filteredFiles) {
+            const list = document.getElementById('audioList');
+            list.innerHTML = filteredFiles.map((file, index) => `
+                <div class="audio-item" 
+                     onclick="playTrack(${audioFiles.indexOf(file)})"
+                     style="--i: ${index};">
+                    ${file.split('/').pop()}
+                </div>
+            `).join('');
+        }
+
+    </script>
+</body>
+</html>
