@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Storica</title>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            max-width: 800px;
+            margin: 2rem auto;
+            padding: 1rem;
+            background: #f5f5f5;
+            color: #333;
+        }
+
+        .chat-container {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .message {
+            display: flex;
+            flex-direction: column;
+            margin: 1rem 0;
+            position: relative;
+            max-width: 85%;
+        }
+
+        .system {
+            align-items: center;
+            text-align: center;
+            background: #f8f9fa;
+            padding: 12px 16px;
+            border-radius: 12px;
+            border: 1px solid #e9ecef;
+            margin: 0 auto;
+        }
+
+        .user {
+            align-items: flex-end;
+            background: #d1e7dd;
+            color: #2c6240;
+            border-radius: 16px 0 16px 16px;
+            padding: 12px 16px;
+        }
+
+        .other {
+            align-items: flex-start;
+            background: #8B008B; 
+            color: #DCDCDC;
+            border-radius: 0 16px 16px 16px;
+            padding: 12px 16px;
+        }
+
+        .sender {
+            font-weight: 500;
+            margin-bottom: 4px;
+            color: 	#1E90FF;
+        }
+
+        .content {
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        /* Effetti di transizione */
+        .message {
+            transition: transform 0.2s ease;
+        }
+        .message:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .chat-container {
+                padding: 1rem;
+            }
+            .message {
+                padding: 10px;
+                font-size: 0.9rem;
+            }
+        }
+
+        /* Stili specifici per elementi speciali */
+        .media-note {
+            display: flex;
+            align-items: center;
+            color: #999;
+            font-style: italic;
+        }
+
+        .media-note::before {
+            content: '📷 ';
+            font-size: 16px;
+            margin-right: 4px;
+            color: #ccc;
+        }
+
+        .deleted-note {
+            color: #c0392b;
+            font-style: italic;
+        }
+
+        .deleted-note::before {
+            content: '❌ ';
+            font-size: 16px;
+            margin-right: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container" id="chatContainer"></div>
+
+    <script>
+        async function loadChat() {
+            try {
+                const response = await fetch('./chat.txt');
+                const content = await response.text();
+                const lines = content.split('\n').filter(line => line.trim() !== '');
+
+                const container = document.getElementById('chatContainer');
+                container.innerHTML = '';
+
+                lines.forEach(line => {
+                    const [_, rawMessage] = line.split(' - ', 2); // Ignoriamo il timestamp
+                    let messageContent = rawMessage.trim();
+                    let sender = '';
+                    let type = 'system';
+
+                    if (messageContent.startsWith('Media omessi')) {
+                        type = 'user';
+                        messageContent = `<div class="media-note">Media omessi</div>`;
+                    } else if (messageContent.startsWith('Hai eliminato questo messaggio')) {
+                        type = 'user';
+                        messageContent = `<div class="deleted-note">${messageContent}</div>`;
+                    } else if (messageContent.includes(': ')) {
+                        [sender, messageContent] = messageContent.split(': ', 2);
+                        type = sender === 'Danilo' ? 'other' : 'user';
+                    }
+
+                    const msgDiv = document.createElement('div');
+                    msgDiv.className = `message ${type}`;
+                    
+                    if (type === 'other' || type === 'user') {
+                        const senderDiv = document.createElement('div');
+                        senderDiv.className = 'sender';
+                        senderDiv.textContent = sender;
+                        msgDiv.appendChild(senderDiv);
+                    }
+
+                    const contentDiv = document.createElement('div');
+                    contentDiv.className = 'content';
+                    contentDiv.innerHTML = messageContent;
+                    msgDiv.appendChild(contentDiv);
+
+                    container.appendChild(msgDiv);
+                });
+            } catch (error) {
+                container.innerHTML = `<div class="error" style="color:red; text-align:center;">Errore: ${error.message}</div>`;
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', loadChat);
+    </script>
+</body>
+</html>
