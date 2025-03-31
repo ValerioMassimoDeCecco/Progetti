@@ -1,0 +1,14 @@
+C:\Users\Valerio\Desktop\MultiplayerServer\bin\Debug\net9.0\MultiplayerServer.exe
+C:\Users\Valerio\Desktop\MultiplayerServer\bin\Debug\net9.0\MultiplayerServer.deps.json
+C:\Users\Valerio\Desktop\MultiplayerServer\bin\Debug\net9.0\MultiplayerServer.runtimeconfig.json
+C:\Users\Valerio\Desktop\MultiplayerServer\bin\Debug\net9.0\MultiplayerServer.dll
+C:\Users\Valerio\Desktop\MultiplayerServer\bin\Debug\net9.0\MultiplayerServer.pdb
+C:\Users\Valerio\Desktop\MultiplayerServer\obj\Debug\net9.0\MultiplayerServer.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\Valerio\Desktop\MultiplayerServer\obj\Debug\net9.0\MultiplayerServer.AssemblyInfoInputs.cache
+C:\Users\Valerio\Desktop\MultiplayerServer\obj\Debug\net9.0\MultiplayerServer.AssemblyInfo.cs
+C:\Users\Valerio\Desktop\MultiplayerServer\obj\Debug\net9.0\MultiplayerServer.csproj.CoreCompileInputs.cache
+C:\Users\Valerio\Desktop\MultiplayerServer\obj\Debug\net9.0\MultiplayerServer.dll
+C:\Users\Valerio\Desktop\MultiplayerServer\obj\Debug\net9.0\refint\MultiplayerServer.dll
+C:\Users\Valerio\Desktop\MultiplayerServer\obj\Debug\net9.0\MultiplayerServer.pdb
+C:\Users\Valerio\Desktop\MultiplayerServer\obj\Debug\net9.0\MultiplayerServer.genruntimeconfig.cache
+C:\Users\Valerio\Desktop\MultiplayerServer\obj\Debug\net9.0\ref\MultiplayerServer.dll
