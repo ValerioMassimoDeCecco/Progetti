@@ -1,7 +1,7 @@
 {
   "name": "peerjs-text-chat",
   "version": "1.0.0",
-  "homepage": "https://<TUO_USERNAME>.github.io/peerjs-text-chat",
+  "homepage": "https://ValerioMassimoDeCecco.github.io/peerjs-text-chat",
   "scripts": {
     "start": "parcel index.html",
     "build": "parcel build index.html",
