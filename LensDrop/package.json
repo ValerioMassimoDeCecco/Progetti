@@ -1,0 +1,33 @@
+{
+  "name": "lensdrop",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Trasferisci file, testo, foto, audio e video inquadrando un altro telefono. P2P nel browser.",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "jsqr": "^1.4.0",
+    "peerjs": "^1.5.5",
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^22.20.5",
+    "@types/qrcode": "^1.5.5",
+    "eslint": "^10.13.0",
+    "jsdom": "^27.4.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.72.1",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
+  }
+}

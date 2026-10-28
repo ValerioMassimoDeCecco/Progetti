@@ -1,0 +1,80 @@
+name: Deploy LensDrop su GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "LensDrop/**"
+      - ".github/workflows/lensdrop-pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages-lensdrop
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Typecheck, test e build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: LensDrop
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: LensDrop/package-lock.json
+
+      - name: Installa dipendenze
+        run: npm ci
+
+      - name: Controllo tipi
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build (sottopercorso GitHub Pages)
+        run: npm run build
+        env:
+          VITE_BASE: /Progetti/LensDrop/
+
+      # Il sito del repository è servito su /Progetti/: l'artefatto deve quindi
+      # contenere la cartella LensDrop per esporre /Progetti/LensDrop/.
+      - name: Prepara artefatto nel sottopercorso
+        run: |
+          mkdir -p _site
+          cp -r dist _site/LensDrop
+
+      - name: Configura Pages
+        uses: actions/configure-pages@v5
+
+      - name: Carica artefatto
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: LensDrop/_site
+
+  deploy:
+    name: Deploy
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Pubblica su GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
