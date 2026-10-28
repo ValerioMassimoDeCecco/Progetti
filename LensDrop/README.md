@@ -168,6 +168,17 @@ Il repository pubblica LensDrop con GitHub Actions (`.github/workflows/lensdrop-
 Configurazione necessaria una tantum nel repository:
 **Settings → Pages → Source: GitHub Actions** (oppure via API, `build_type: "workflow"`).
 
+> **Stato del deploy (28 ottobre 2026).** Il primo run del workflow
+> ([#40726422561](https://github.com/ValerioMassimoDeCecco/Progetti/actions/runs/40726422561))
+> ha completato con successo typecheck, lint, test e build, poi si è fermato allo step
+> *Configura Pages* con `Resource not accessible by integration (403)`: il token dell'integrazione
+> GitHub usato in questa sessione non ha i permessi di amministrazione necessari per creare il sito
+> Pages. Appena il proprietario del repository abilita Pages (vedi sopra), il workflow arriva al
+> deploy senza altre modifiche. Fino a quel momento
+> <https://valeriomassimodececco.github.io/Progetti/LensDrop/> non è raggiungibile.
+> L'URL non è stato verificabile dall'ambiente di sviluppo di questa sessione, che non ha accesso
+> di rete al dominio `*.github.io`.
+
 ### Variabili d'ambiente
 
 | Variabile | Dove | Significato |
