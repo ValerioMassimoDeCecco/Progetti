@@ -61,6 +61,9 @@ jobs:
 
       - name: Configura Pages
         uses: actions/configure-pages@v5
+        with:
+          # Abilita GitHub Pages con sorgente "GitHub Actions" se non è ancora attivo.
+          enablement: true
 
       - name: Carica artefatto
         uses: actions/upload-pages-artifact@v3
