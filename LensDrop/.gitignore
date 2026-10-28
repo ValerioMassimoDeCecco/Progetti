@@ -1,0 +1,9 @@
+node_modules/
+dist/
+_site/
+.vite/
+coverage/
+*.local
+.DS_Store
+Thumbs.db
+npm-debug.log*
