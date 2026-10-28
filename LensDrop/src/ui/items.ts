@@ -1,7 +1,6 @@
-/** Rendering delle righe file: selezione, avanzamento, contenuti ricevuti. */
+/** Rendering delle righe: contenuti selezionati per l'invio e file ricevuti. */
 
-import type { ItemMeta } from "../core/protocol";
-import type { ReceivedItem } from "../core/transfer";
+import type { BundleItem } from "../core/bundle";
 import {
   fileExtension,
   formatBytes,
@@ -31,14 +30,21 @@ const KIND_LABEL: Record<ContentKind, string> = {
   file: "file",
 };
 
+export interface SendItem {
+  id: string;
+  name: string;
+  mime: string;
+  size: number;
+  data: Uint8Array<ArrayBuffer>;
+}
+
 export function kindLabel(mime: string, name: string): string {
   return KIND_LABEL[kindOf(mime, name)];
 }
 
 function itemIcon(mime: string, name: string): HTMLElement {
   const kind = kindOf(mime, name);
-  const holder = el("span", { className: `item__icon item__icon--${kind}` }, [icon(KIND_ICON[kind])]);
-  return holder;
+  return el("span", { className: `item__icon item__icon--${kind}` }, [icon(KIND_ICON[kind])]);
 }
 
 export function describeFile(size: number, mime: string, name: string): string {
@@ -48,161 +54,125 @@ export function describeFile(size: number, mime: string, name: string): string {
   return parts.join(" · ");
 }
 
-export interface FileRow {
-  row: HTMLLIElement;
-  status: HTMLElement;
-  bar: HTMLElement | null;
-  barFill: HTMLElement | null;
-}
+/** Elenco dei contenuti scelti per l'invio, con rimozione singola. */
+export function renderSendList(list: HTMLElement, items: SendItem[], onRemove: (id: string) => void): void {
+  list.replaceChildren();
 
-interface FileRowOptions {
-  name: string;
-  size: number;
-  mime: string;
-  removable?: boolean;
-  onRemove?: () => void;
-}
+  for (const item of items) {
+    const name = el("span", { className: "item__name", text: item.name });
+    name.title = item.name;
+    const meta = el("span", { className: "item__meta", text: describeFile(item.size, item.mime, item.name) });
+    const body = el("div", { className: "item__body" }, [name, meta]);
 
-export function createFileRow(options: FileRowOptions): FileRow {
-  const status = el("span", { className: "item__status", text: options.removable ? "" : "in attesa" });
-  const name = el("span", { className: "item__name", text: options.name });
-  name.title = options.name;
-  const meta = el("span", { className: "item__meta", text: describeFile(options.size, options.mime, options.name) });
-  const body = el("div", { className: "item__body" }, [name, meta]);
-  const row = el("li", { className: "item" }, [itemIcon(options.mime, options.name), body, status]);
+    if (kindOf(item.mime, item.name) === "image" && item.size > 0) {
+      const url = URL.createObjectURL(new Blob([item.data], { type: item.mime }));
+      const image = el("img", { className: "thumb", attrs: { alt: `Anteprima di ${item.name}`, loading: "lazy" } });
+      image.src = url;
+      image.addEventListener("load", () => URL.revokeObjectURL(url), { once: true });
+      image.addEventListener("error", () => URL.revokeObjectURL(url), { once: true });
+      body.append(image);
+    }
 
-  let bar: HTMLElement | null = null;
-  let barFill: HTMLElement | null = null;
+    const remove = el(
+      "button",
+      {
+        className: "item__remove icon-btn",
+        attrs: { type: "button", "aria-label": `Rimuovi ${item.name}` },
+      },
+      [icon("x")],
+    );
+    remove.addEventListener("click", () => onRemove(item.id));
 
-  if (options.removable) {
-    const remove = el("button", {
-      className: "item__remove icon-btn",
-      attrs: { type: "button", "aria-label": `Rimuovi ${options.name}` },
-    }, [icon("x")]);
-    remove.addEventListener("click", () => options.onRemove?.());
-    row.append(remove);
-  } else {
-    barFill = el("span");
-    bar = el("div", { className: "item__bar" }, [barFill]);
-    body.append(bar);
-  }
-
-  return { row, status, bar, barFill };
-}
-
-export function setRowProgress(row: FileRow, fraction: number, label?: string): void {
-  if (row.barFill) row.barFill.style.width = `${Math.round(Math.max(0, Math.min(1, fraction)) * 100)}%`;
-  if (label !== undefined) row.status.textContent = label;
-}
-
-export function setRowOutcome(row: FileRow, state: "ok" | "error" | "pending", text: string): void {
-  row.status.textContent = text;
-  row.status.classList.toggle("item__status--ok", state === "ok");
-  row.status.classList.toggle("item__status--error", state === "error");
-  if (state === "ok" && row.barFill) row.barFill.style.width = "100%";
-}
-
-/** Converte i metadati del protocollo in righe di avanzamento. */
-export function rowsFromOffer(items: ItemMeta[]): Map<string, FileRow> {
-  const map = new Map<string, FileRow>();
-  for (const meta of items) {
-    const row = createFileRow({ name: meta.name, size: meta.size, mime: meta.mime });
-    map.set(meta.id, row);
-  }
-  return map;
-}
-
-export function appendRows(list: HTMLElement, rows: Map<string, FileRow>, order: ItemMeta[]): void {
-  for (const meta of order) {
-    const row = rows.get(meta.id);
-    if (row) list.append(row.row);
+    list.append(el("li", { className: "item" }, [itemIcon(item.mime, item.name), body, remove]));
   }
 }
 
-interface ReceivedRowHandlers {
-  onDownload: (item: ReceivedItem) => void;
-  onShare: (item: ReceivedItem) => void;
+export interface ReceivedHandlers {
+  onSave: (item: BundleItem) => void;
+  onShare: (item: BundleItem) => void;
   onCopy: (text: string) => void;
-  onPreviewUrl: (url: string) => void;
+  onPreview: (url: string) => void;
 }
 
 /**
- * Riga ricca per un contenuto ricevuto: anteprima immagine/audio/video,
- * estratto del testo, download e condivisione nativa quando disponibile.
+ * Riga di un contenuto ricevuto: anteprima quando il tipo lo consente,
+ * salvataggio, condivisione nativa e copia del testo.
  */
-export function createReceivedRow(item: ReceivedItem, handlers: ReceivedRowHandlers): HTMLLIElement {
-  const kind = kindOf(item.meta.mime, item.fileName);
-  const status = el("span", { className: "item__status item__status--ok" }, [
-    icon("check"),
-    el("span", { text: "SHA-256 ok" }),
-  ]);
-  const name = el("span", { className: "item__name", text: item.fileName });
-  name.title = item.fileName;
+export function createReceivedRow(item: BundleItem, handlers: ReceivedHandlers): HTMLLIElement {
+  const kind = kindOf(item.mime, item.name);
+  const blob = new Blob([item.data], { type: item.mime || "application/octet-stream" });
+
+  const name = el("span", { className: "item__name", text: item.name });
+  name.title = item.name;
   const meta = el("span", {
     className: "item__meta",
-    text: `${formatBytes(item.blob.size)} · ${item.meta.mime || "tipo sconosciuto"}`,
+    text: describeFile(item.data.byteLength, item.mime, item.name),
   });
+  const status = el("span", { className: "item__status item__status--ok" }, [
+    icon("check"),
+    el("span", { text: "SHA-256 verificato" }),
+  ]);
   const body = el("div", { className: "item__body" }, [name, meta, status]);
 
   const actions = el("div", { className: "item__actions" });
-  const download = el(
-    "button",
-    { className: "btn btn--primary", attrs: { type: "button" } },
-    [icon("download"), el("span", { text: "Scarica" })],
-  );
-  download.addEventListener("click", () => handlers.onDownload(item));
-  actions.append(download);
+  const save = el("button", { className: "btn btn--primary", attrs: { type: "button" } }, [
+    icon("download"),
+    el("span", { text: "Salva" }),
+  ]);
+  save.addEventListener("click", () => handlers.onSave(item));
+  actions.append(save);
 
-  const share = el(
-    "button",
-    { className: "btn btn--ghost", attrs: { type: "button" } },
-    [icon("share"), el("span", { text: "Condividi" })],
-  );
-  share.addEventListener("click", () => handlers.onShare(item));
-  actions.append(share);
+  if (kind === "image" || kind === "video" || kind === "audio") {
+    const url = URL.createObjectURL(blob);
+    handlers.onPreview(url);
 
-  if (kind === "image") {
-    const url = URL.createObjectURL(item.blob);
-    handlers.onPreviewUrl(url);
-    const image = el("img", { className: "thumb", attrs: { alt: `Anteprima di ${item.fileName}`, loading: "lazy" } });
-    image.src = url;
-    body.append(image);
-  } else if (kind === "video") {
-    const url = URL.createObjectURL(item.blob);
-    handlers.onPreviewUrl(url);
-    const video = el("video", { attrs: { controls: "true", playsinline: "true", preload: "metadata" } });
-    video.src = url;
-    body.append(video);
-  } else if (kind === "audio") {
-    const url = URL.createObjectURL(item.blob);
-    handlers.onPreviewUrl(url);
-    const audio = el("audio", { attrs: { controls: "true", preload: "metadata" } });
-    audio.src = url;
-    body.append(audio);
-  } else if (kind === "text") {
-    const preview = el("pre", { className: "text-preview", text: "Caricamento anteprima…" });
+    if (kind === "image") {
+      const image = el("img", { className: "thumb", attrs: { alt: `Anteprima di ${item.name}`, loading: "lazy" } });
+      image.src = url;
+      body.append(image);
+    } else if (kind === "video") {
+      const video = el("video", { attrs: { controls: "true", playsinline: "true", preload: "metadata" } });
+      video.src = url;
+      body.append(video);
+    } else {
+      const audio = el("audio", { attrs: { controls: "true", preload: "metadata" } });
+      audio.src = url;
+      body.append(audio);
+    }
+  }
+
+  if (kind === "text") {
+    const preview = el("pre", { className: "text-preview", text: "Anteprima…" });
     body.append(preview);
-    void readTextPreview(item.blob, 4000)
+    void readTextPreview(blob, 4000)
       .then((text) => {
-        preview.textContent = text.length > 0 ? text : "(file di testo vuoto)";
+        preview.textContent = text.length > 0 ? text : "(testo vuoto)";
       })
       .catch(() => {
-        preview.textContent = "Anteprima non disponibile: scarica il file per leggerlo.";
+        preview.textContent = "Anteprima non disponibile: salva il file per leggerlo.";
       });
-    const copy = el(
-      "button",
-      { className: "btn btn--ghost", attrs: { type: "button" } },
-      [icon("copy"), el("span", { text: "Copia testo" })],
-    );
+
+    const copy = el("button", { className: "btn btn--ghost", attrs: { type: "button" } }, [
+      icon("copy"),
+      el("span", { text: "Copia" }),
+    ]);
     copy.addEventListener("click", () => {
-      void readTextPreview(item.blob, 200_000)
+      void readTextPreview(blob, 200_000)
         .then((text) => handlers.onCopy(text))
         .catch(() => handlers.onCopy(""));
     });
     actions.append(copy);
   }
 
-  body.append(actions);
+  if (typeof navigator.canShare === "function") {
+    const share = el("button", { className: "btn btn--ghost", attrs: { type: "button" } }, [
+      icon("share"),
+      el("span", { text: "Condividi" }),
+    ]);
+    share.addEventListener("click", () => handlers.onShare(item));
+    actions.append(share);
+  }
 
-  return el("li", { className: "item item--rich" }, [itemIcon(item.meta.mime, item.fileName), body]);
+  body.append(actions);
+  return el("li", { className: "item item--rich" }, [itemIcon(item.mime, item.name), body]);
 }

@@ -98,6 +98,27 @@ export async function readTextPreview(blob: Blob, maxChars = 20_000): Promise<st
   return text.length > maxChars ? `${text.slice(0, maxChars)}\n…` : text;
 }
 
+/**
+ * Legge un Blob/File in memoria.
+ * `arrayBuffer()` non esiste in tutti gli ambienti (per esempio nei DOM
+ * simulati dei test): si ricade su FileReader senza cambiare il comportamento.
+ */
+export async function readBlobBytes(blob: Blob): Promise<Uint8Array<ArrayBuffer>> {
+  if (typeof blob.arrayBuffer === "function") {
+    return new Uint8Array(await blob.arrayBuffer());
+  }
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      if (result instanceof ArrayBuffer) resolve(new Uint8Array(result));
+      else reject(new Error("Lettura del file non riuscita."));
+    };
+    reader.onerror = () => reject(new Error("Lettura del file non riuscita."));
+    reader.readAsArrayBuffer(blob);
+  });
+}
+
 export function downloadBlob(blob: Blob, fileName: string): void {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");

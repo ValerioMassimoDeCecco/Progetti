@@ -2,341 +2,297 @@
 
 **Passa tutto. Basta uno sguardo.**
 
-LensDrop è un'applicazione web che trasferisce file, cartelle, foto, video, audio e testo tra due dispositivi:
-il mittente mostra un codice QR, il destinatario lo inquadra con la fotocamera e i contenuti passano
-**direttamente da browser a browser** tramite WebRTC. Nessun upload su un server, nessun account,
-nessuna installazione.
+LensDrop trasferisce file, cartelle, foto, video, audio e testo tra due dispositivi usando **solo lo schermo
+del mittente e la fotocamera del destinatario**. Nessun Wi-Fi, nessun Bluetooth, nessun server, nessun account:
+lo schermo mostra un flusso di codici QR animati, l'altro telefono li inquadra e ricostruisce il contenuto.
 
-- **Demo pubblicata:** <https://valeriomassimodececco.github.io/Progetti/LensDrop/>
+- **Demo pubblicata:** <https://valeriomassimodececco.github.io/Progetti/LensDrop/> *(stato del deploy: vedi §8)*
 - **Codice:** cartella `LensDrop/` del repository `ValerioMassimoDeCecco/Progetti`
 - **Licenza:** MIT (vedi `LICENSE`)
+
+> **Novità di questa versione.** La modalità di rete (WebRTC/PeerJS) è stata **rimossa**: il canale è ora
+> esclusivamente ottico e funziona in modalità aereo. Non esistono più signaling, STUN/TURN, timeout di
+> collegamento né dipendenze da servizi esterni: l'unico requisito è una fotocamera e uno schermo.
 
 ---
 
 ## 1. Funzionalità
 
-### Flusso principale
-
-| Modalità | Passaggi |
+| Area | Dettagli |
 |---|---|
-| **Invia** | Scegli i contenuti → viene generato un codice QR (con scadenza) → attendi il destinatario → invio con avanzamento, velocità e tempo stimato |
-| **Ricevi** | Attiva la fotocamera → inquadra il QR → verifica la proposta → **confermi** → ricevi con verifica SHA-256 di ogni file → scarichi o condividi |
-
-### Contenuti supportati
-
-- File di qualsiasi tipo ed estensione (il browser non impone filtri: PDF, ZIP, documenti, formati sconosciuti).
-- Immagini, video e audio, con anteprima/riproduzione per i formati che il browser sa decodificare.
-- Selezioni multiple (fino a 200 elementi per sessione) e cartelle intere (`webkitdirectory` dove disponibile,
-  incluse le cartelle trascinate su desktop).
-- Testo incollato o digitato: viaggia come file `.txt` leggibile ovunque, con anteprima e pulsante «Copia».
-- Invii successivi sulla stessa sessione: terminato un lotto, si possono proporre altri contenuti senza nuovo QR.
-
-### Protocollo e robustezza
-
-- Trasferimento **a blocchi da 16 KB** con controllo di flusso su `bufferedAmount` (nessun file caricato per intero in memoria).
-- **SHA-256 incrementale** calcolato in streaming da mittente e destinatario: ogni file viene confermato solo se l'impronta coincide.
-- Conferma esplicita del destinatario prima di ricevere un solo byte; possibilità di rifiutare o annullare.
-- Codice di sessione monouso con **scadenza a 10 minuti** e conto alla rovescia visibile.
-- Gestione di sessioni scadute, connessioni duplicate, dispositivi che si disconnettono, messaggi non validi e blocchi fuori sequenza.
-- Nomi file sanificati (niente percorsi, caratteri di controllo o nomi riservati).
-- Indicazione del percorso di rete: **diretto P2P** o **relay TURN**, letto dalle statistiche ICE.
-
-### Interfaccia
-
-- Tema **Liquid Glass**: superfici traslucide, riflessi, profondità, animazioni morbide.
-- Tema chiaro, scuro o automatico, con preferenza salvata.
-- Layout responsive per telefoni, tablet e desktop; target di tocco ≥ 44 px.
-- Rispetto di `prefers-reduced-motion`, focus visibile e regioni `aria-live` per gli stati.
-- PWA installabile (manifest + service worker) e cronologia locale dei soli metadati.
+| Contenuti | File di qualsiasi tipo, cartelle intere, immagini, video, audio, testo incollato. Più elementi in un'unica sessione. |
+| Invio | Selezione con drag & drop, rimozione dei singoli elementi, anteprima immagini, modalità solo testo, densità e velocità regolabili, pausa/ripresa, schermo intero, blocco dello spegnimento. |
+| Ricezione | Fotocamera posteriore, torcia quando disponibile, avanzamento reale per blocchi, velocità, tempo residuo, ripresa automatica dopo frame persi. |
+| Risultato | Verifica SHA-256, anteprima immagini/audio/video, estratto dei file di testo, copia del testo, salvataggio singolo o multiplo, condivisione nativa. |
+| Affidabilità | Codici fountain (LT): i frame persi non richiedono ripartenze e non serve alcun canale di ritorno. |
+| Interfaccia | Tema Liquid Glass, chiaro/scuro/automatico, responsive mobile-first, aree di tocco ampie, `prefers-reduced-motion`, navigazione da tastiera. |
+| PWA | Installabile, avvio offline dopo il primo caricamento, service worker con cache dell'app shell. |
+| Diagnostica | Pannello con eventi timestampati (fotocamera, decodifica, frame, checksum), copia negli appunti e download `.txt`. |
+| Privacy | Nessuna richiesta di rete durante il trasferimento; cronologia locale con soli metadati. |
 
 ---
 
-## 2. Architettura
+## 2. Come funziona (protocollo ottico)
 
 ```
-┌────────────────────┐        segnalazione (SDP/ICE)        ┌────────────────────┐
-│  Telefono A        │ ───────────── PeerServer ──────────▶ │  Telefono B        │
-│  (mittente)        │                                      │  (destinatario)    │
-│                    │ ═══════ DataChannel WebRTC ═════════ │                    │
-│  HostSession       │        file a blocchi + JSON         │  GuestSession      │
-│  TransferSender    │        HMAC handshake, SHA-256       │  TransferReceiver  │
-└────────────────────┘                                      └────────────────────┘
+mittente                                              destinatario
+┌──────────────┐                                      ┌──────────────┐
+│ file/testo   │                                      │ fotocamera   │
+│      ↓       │                                      │      ↓       │
+│ contenitore  │                                      │ lettura QR   │
+│ (LDB1)       │                                      │      ↓       │
+│      ↓       │                                      │ dedup frame  │
+│ gzip opz.    │                                      │      ↓       │
+│      ↓       │                                      │ decodifica   │
+│ SHA-256      │                                      │ fountain     │
+│      ↓       │   flusso QR animati (solo luce)      │      ↓       │
+│ blocchi k    │ ───────────────────────────────────▶ │ SHA-256      │
+│ + riparazioni│                                      │      ↓       │
+└──────────────┘                                      │ file pronti  │
+                                                      └──────────────┘
 ```
 
-### Perché PeerJS + WebRTC
+### Frame
 
-GitHub Pages ospita solo file statici: non può fare da backend. Per stabilire un collegamento WebRTC serve
-comunque uno scambio iniziale di parametri (SDP e candidati ICE), cioè un **servizio di segnalazione**.
+Ogni frame è un QR il cui testo è `LD2` + **Base45** dei dati binari. Base45 usa l'alfabeto della modalità
+alfanumerica dei QR (`0-9 A-Z spazio $%*+-./:`), che codifica 11 bit ogni 2 caratteri invece di 8 bit per
+carattere: a parità di QR entrano circa il **35% di byte in più**. Tre tipi di frame, tutti con l'identificativo
+di sessione a 16 bit nell'intestazione:
 
-Le alternative valutate:
-
-| Strategia | Esito |
-|---|---|
-| **PeerJS Cloud** (PeerServer pubblico) + WebRTC DataChannel | **Scelta.** Libreria matura (MIT), signaling pronto, nessuna chiave, nessun dato dei file sul server. |
-| SDP dentro il QR | Scartata: l'offer è troppo grande per un QR leggibile e servirebbe un secondo QR di risposta (due scansioni). |
-| Backend di signaling proprio | Supportato come opzione, ma GitHub Pages non può ospitarlo: richiederebbe un hosting aggiuntivo. |
-
-PeerJS gestisce solo la segnalazione (poche centinaia di byte): **i contenuti non transitano dal server**.
-Se la rete impedisce il collegamento diretto, entra in gioco un relay **TURN** e in quel caso il traffico passa
-dal relay (cifrato con DTLS). L'app mostra il percorso effettivamente selezionato da ICE.
-
-### Moduli
-
-```
-src/
-├── config.ts          costanti (blocchi, limiti, TTL, server ICE)
-├── core/
-│   ├── base32.ts      codice di sessione leggibile (12 caratteri, 60 bit)
-│   ├── crypto.ts      HKDF, HMAC, nonce, SHA-256 nativo, confronto a tempo costante
-│   ├── sha256.ts      SHA-256 incrementale in TypeScript (streaming su file grandi)
-│   ├── auth.ts        handshake reciproco challenge/response
-│   ├── protocol.ts    messaggi JSON tipizzati, validazione, frame binari, nomi file
-│   ├── channel.ts     astrazione del canale + Messenger (validazione e coda)
-│   ├── session.ts     PeerJS: PeerChannel, HostSession, GuestSession, percorso ICE
-│   ├── transfer.ts    motore di invio/ricezione: blocchi, backpressure, hash, annullamento
-│   ├── files.ts       formati, download, Web Share, drag & drop di cartelle
-│   └── settings.ts    preferenze locali e configurazione ICE/segnalazione
-├── ui/                schermate, routing hash, QR, scanner, tema, cronologia
-└── styles/            base.css (token e vetro), screens.css (componenti)
-```
-
-### Protocollo applicativo (versione 1)
-
-Messaggi di controllo (JSON, validati campo per campo):
-
-| Messaggio | Direzione | Scopo |
+| Tipo | Contenuto | Scopo |
 |---|---|---|
-| `hello` / `welcome` | mittente → destinatario → mittente | sfida e risposta HMAC con nonce freschi |
-| `offer` | mittente → destinatario | elenco file (id, nome, dimensione, MIME) e totale |
-| `accept` / `reject` | destinatario → mittente | conferma o rifiuto esplicito |
-| `start` / `end` | mittente → destinatario | inizio file e fine con byte e SHA-256 |
-| `verified` | destinatario → mittente | esito della verifica di integrità |
-| `done` | mittente → destinatario | lotto completato |
-| `cancel` | entrambi | annullamento con motivo |
-| `ping` / `pong` | entrambi | controllo di vitalità |
+| `M` meta | nome, numero elementi, dimensione, `k`, dimensione blocco, SHA-256, flag gzip | aggancio, anche a flusso iniziato |
+| `B` blocco | indice a 32 bit + byte del blocco | passata dati |
+| `R` riparazione | seed a 32 bit + simbolo fountain | recupero dei frame persi |
 
-I contenuti viaggiano come frame binari con intestazione di 12 byte: indice file, numero di sequenza, lunghezza.
-Un blocco duplicato, fuori ordine o con lunghezza incoerente interrompe il trasferimento.
+I metadati vengono ripetuti ogni 24 frame e quattro volte all'inizio: chi punta la fotocamera a metà
+trasferimento capisce comunque cosa sta ricevendo.
 
-### Sicurezza del codice di sessione
+### Codici fountain (LT)
 
-1. Il codice di 12 caratteri Base32 (60 bit casuali) **non viene mai trasmesso**.
-2. Da esso si deriva con HKDF-SHA256 una chiave HMAC non estraibile.
-3. Il mittente invia un nonce casuale firmato; il destinatario risponde firmando il nonce del mittente + il proprio.
-   Solo chi conosce il codice può farlo: un estraneo che scopre l'ID PeerJS non può né inviare né ricevere.
-4. I nonce sono nuovi a ogni connessione: il replay di messaggi catturati non funziona.
-5. La semplice scansione del QR non avvia nulla: serve la conferma del destinatario e i file li sceglie il mittente.
+Il payload è diviso in `k` blocchi. Ogni simbolo di riparazione è lo XOR di un sottoinsieme di blocchi scelto
+da un seed tramite una distribuzione **robust soliton**. Il destinatario raccoglie i simboli che riesce a
+leggere, risolve per "peeling" e, quando il peeling si ferma, completa con un'eliminazione di Gauss su GF(2).
+Non serve che il mittente sappia cosa è arrivato: non esiste alcun canale di ritorno.
+
+### Integrità e contenitore
+
+Lo SHA-256 del payload è trasmesso nei metadati e verificato **prima** di rendere disponibili i file: se non
+corrisponde, la ricezione viene rifiutata e si può riprovare. Il contenitore `LDB1` trasporta più elementi in
+un solo flusso; i nomi ricevuti vengono normalizzati (niente separatori di percorso o caratteri di controllo).
 
 ---
 
-## 3. Esecuzione locale
+## 3. Prestazioni reali
 
-Requisiti: **Node.js ≥ 22** e npm.
+Il limite è fisico: densità del QR leggibile dalla fotocamera × frame al secondo.
+
+| Densità | Byte per frame | QR | Moduli | px/modulo su schermo da 360 px |
+|---|---|---|---|---|
+| Compatto | 520 | v16 | 81×81 | 4,4 |
+| Equilibrato (default) | 700 | v19 | 93×93 | 3,9 |
+| Denso | 1200 | v25 | 117×117 | 3,1 |
+
+Velocità indicativa = `byte_per_frame × fps × 0,92` (i frame di metadati sono il resto), divisa per il
+sovraccarico dei codici LT (**misurato: 1,3–1,8×** a seconda delle perdite).
+
+| Scenario | Throughput tipico | 1 MB richiede |
+|---|---|---|
+| Compatto, 8 fps | ~3,8 KB/s | ~4 min |
+| Equilibrato, 8 fps | ~5,1 KB/s | ~3 min |
+| Denso, 14 fps | ~15 KB/s | ~1 min |
+
+Sono stime prudenti, non promesse: contano schermo luminoso, mano ferma e distanza ravvicinata. Per file
+grandi l'app mostra sempre la durata prevista e un avviso esplicito prima di partire.
+
+---
+
+## 4. Avvio locale
 
 ```bash
 cd LensDrop
 npm ci
-
 npm run dev        # http://localhost:5173
-npm run typecheck  # controllo tipi TypeScript
-npm run lint       # ESLint (flat config)
-npm test           # test unitari + integrazione protocollo + smoke UI (vitest)
-npm run build      # build di produzione in dist/
-npm run preview    # anteprima della build
 ```
 
-Note:
+La fotocamera richiede un **contesto sicuro**: `localhost` va bene, per un telefono serve HTTPS
+(GitHub Pages lo fornisce).
 
-- La **fotocamera** richiede un contesto sicuro: `http://localhost` è considerato sicuro, un IP di rete locale no.
-  Per provare da un telefono in LAN serve HTTPS (es. tunnel) oppure la versione pubblicata su GitHub Pages.
-- Le sessioni usano Internet per la segnalazione PeerJS: senza rete il QR si genera ma il secondo dispositivo
-  non riesce a collegarsi (l'app mostra l'errore e propone di riprovare).
-
----
-
-## 4. Build e deploy su GitHub Pages
-
-Il repository pubblica LensDrop con GitHub Actions (`.github/workflows/lensdrop-pages.yml`):
-
-1. Su ogni push su `main` che tocca `LensDrop/**` (o manualmente con *workflow_dispatch*):
-   installazione, typecheck, lint, test, build.
-2. La build usa `VITE_BASE=/Progetti/LensDrop/`, così tutti gli asset e il service worker puntano al
-   sottopercorso corretto.
-3. L'artefatto viene preparato in `_site/LensDrop/` e pubblicato con `actions/deploy-pages`,
-   così l'app risponde su `/Progetti/LensDrop/` (radice del sito del repository: `/Progetti/`).
-
-Configurazione necessaria una tantum nel repository:
-**Settings → Pages → Source: GitHub Actions** (oppure via API, `build_type: "workflow"`).
-
-> **Stato del deploy (28 ottobre 2026).** Il primo run del workflow
-> ([#40726422561](https://github.com/ValerioMassimoDeCecco/Progetti/actions/runs/40726422561))
-> ha completato con successo typecheck, lint, test e build, poi si è fermato allo step
-> *Configura Pages* con `Resource not accessible by integration (403)`: il token dell'integrazione
-> GitHub usato in questa sessione non ha i permessi di amministrazione necessari per creare il sito
-> Pages. Appena il proprietario del repository abilita Pages (vedi sopra), il workflow arriva al
-> deploy senza altre modifiche. Fino a quel momento
-> <https://valeriomassimodececco.github.io/Progetti/LensDrop/> non è raggiungibile.
-> L'URL non è stato verificabile dall'ambiente di sviluppo di questa sessione, che non ha accesso
-> di rete al dominio `*.github.io`.
-
-### Variabili d'ambiente
-
-| Variabile | Dove | Significato |
-|---|---|---|
-| `VITE_BASE` | build | Sottopercorso pubblico. Default `/`. Sul repo è `/Progetti/LensDrop/`. |
-
-Non esistono segreti, chiavi o token nel frontend: il servizio di segnalazione predefinito è pubblico e non
-richiede credenziali. Eventuali credenziali TURN inserite dall'utente restano nel `localStorage` del suo browser
-e non vengono mai inviate altrove se non al proprio relay.
-
----
-
-## 5. Servizi esterni
-
-| Servizio | Uso | Condizioni |
-|---|---|---|
-| **PeerJS Cloud** (`0.peerjs.com`) | solo segnalazione (SDP/ICE) | servizio pubblico gratuito, **senza SLA né garanzie di disponibilità**; adatto a uso personale/demo. Configurabile un server proprio nelle impostazioni. |
-| **STUN Google** (`stun.l.google.com:19302`) | scoperta dell'indirizzo pubblico | server STUN pubblico e gratuito. |
-| **TURN demo PeerJS** (`eu-0`/`us-0.turn.peerjs.com`) | relay quando il P2P diretto fallisce | credenziali di test distribuite con PeerJS, nessuna garanzia di uptime né di capacità. Per uso intensivo configurare un TURN proprio. |
-
-### Server di segnalazione proprio
-
-Con Node installato:
+Altri comandi:
 
 ```bash
-npm install -g peer
-peerjs --port 9000 --path /myapp
-# con TLS: --sslkey /path/key.pem --sslcert /path/cert.pem
+npm run typecheck  # TypeScript in modalità strict, nessun emit
+npm run lint       # ESLint
+npm test           # Vitest (10 file, 48 test)
+npm run build      # typecheck + build di produzione
 ```
 
-Poi in **Impostazioni → Segnalazione → Server proprio**: host, porta, path, key e «Usa WSS/HTTPS».
-
-### TURN proprio
-
-In **Impostazioni → Relay TURN** si possono inserire URL multipli, username e credenziale (es. coturn).
-Gli URL non validi vengono scartati; il traffico passerebbe dal relay configurato.
-
 ---
 
-## 6. Test
+## 5. Test
 
-Comandi e risultati dell'ultima esecuzione locale (Node 22, Linux):
+`npx vitest run` → **10 file, 48 test**.
 
-| Comando | Risultato |
+| File | Copre |
 |---|---|
-| `npm run typecheck` (`tsc --noEmit`, strict) | ✅ nessun errore |
-| `npm run lint` (`eslint .`) | ✅ nessun errore/avviso |
-| `npm test` (vitest) | ✅ **9 file, 60 test** superati |
-| `npm run build` | ✅ build di produzione generata |
+| `test/base45.test.ts` | vettori ufficiali RFC 9285, round-trip su 0–300 byte, input invalidi |
+| `test/frame.test.ts` | codifica/decodifica dei tre tipi di frame, QR estranei ignorati, frame corrotti rifiutati |
+| `test/bundle.test.ts` | contenitore multi-file, sanificazione dei nomi, payload troncati |
+| `test/fountain.test.ts` | distribuzione deterministica, ricostruzione con metà dei blocchi, sblocco con Gauss |
+| `test/optical.test.ts` | trasferimento end-to-end con 35% di frame persi, compressione, più elementi, checksum alterato |
+| `test/qr-roundtrip.test.ts` | **matrice QR rasterizzata → jsQR → frame ricostruito**: verifica il canale ottico reale, non solo le funzioni |
+| `test/sha256.test.ts` | hash incrementale e confronto con `node:crypto` |
+| `test/markup.test.ts` | ogni `#id` usato dal codice esiste, nessun id duplicato, icone definite |
+| `test/ui-smoke.test.ts` | routing, tema, aggiunta/rimozione contenuti, salvataggio impostazioni, diagnostica (jsdom) |
+| `test/settings.test.ts` | valori ammessi, fallback, persistenza delle preferenze |
 
-Copertura dei test automatici:
+**Cosa i test non coprono:** l'ottica reale (messa a fuoco, riflessi, luminosità, distanza) e il
+comportamento su telefoni fisici. Non è stato possibile eseguire una prova su due dispositivi in questa
+sessione: l'ambiente non ha fotocamera né browser grafico. Lo script qui sotto serve a colmare quel vuoto in
+cinque minuti.
 
-- **SHA-256 incrementale** confrontato con `node:crypto` su dimensioni e suddivisioni diverse, più vettori noti.
-- **Codice Base32**: generazione, normalizzazione tollerante, lunghezze, round-trip.
-- **Crypto**: derivazione HKDF, HMAC deterministico per codice uguale e diverso per codice diverso, chiave non estraibile.
-- **Protocollo**: validazione di offerte, sequenze, hash, frame binari, nomi pericolosi, payload malevoli.
-- **Handshake**: autenticazione reciproca, rifiuto di chi non conosce il codice, replay di `welcome` respinto.
-- **Trasferimento end-to-end su canale in memoria**: più file (anche vuoti), file da 1 MB, backpressure,
-  annullamento, payload alterato rilevato dallo SHA-256, blocchi duplicati, secondo lotto sulla stessa sessione,
-  rifiuto della proposta, coda dei messaggi, chiusura su messaggi non validi.
-- **Smoke UI in jsdom sul markup reale**: avvio, routing tra tutte le schermate, tema, inserimento testo,
-  rimozione dalla selezione, salvataggio impostazioni, link di invito valido/scaduto/non valido.
-- **Controlli statici sul markup**: ogni selettore usato dal codice esiste, nessun id duplicato, tutte le icone
-  referenziate sono definite, manifest e meta essenziali presenti.
-- **Recupero di una sfida persa**: l'handshake va a buon fine anche se il primo `hello` arriva prima che il
-  destinatario sia in ascolto.
+### Prova manuale in 5 minuti
 
-### Cosa **non** è stato possibile verificare
+1. Apri LensDrop su entrambi i telefoni (installala come PWA: menu del browser → *Aggiungi a schermo Home*).
+2. Disattiva Wi-Fi, dati mobili e Bluetooth su entrambi: LensDrop non ne ha bisogno.
+3. Telefono A → **Invia** → aggiungi una foto da ~300 KB e del testo → *Avvia il flusso ottico*.
+4. Telefono B → **Ricevi** → *Attiva fotocamera* → inquadra lo schermo di A a 15–25 cm, riempiendo
+   l'inquadratura; alza la luminosità di A.
+5. Attendi il 100%, poi *Salva*: il file deve aprirsi identico all'originale.
 
-- **Nessun test tra due dispositivi fisici** è stato eseguito: l'ambiente di sviluppo non dispone di browser
-  grafico né di accesso alla rete del servizio PeerJS. I test automatici validano protocollo, crittografia e
-  UI, ma **non sostituiscono** una prova reale su due telefoni.
-- La resa visiva (blur, riflessi, animazioni) va verificata su dispositivi reali: i test DOM non applicano il CSS.
-- La disponibilità effettiva del servizio PeerJS Cloud e del TURN demo non è garantita e non è stata misurata.
+Cosa guardare in caso di problemi (pannello **Diagnostica**, icona dell'insetto in alto):
 
-### Prova manuale consigliata (5 minuti)
-
-1. Apri il link pubblico su due telefoni (uno Android e uno iPhone, se possibile).
-2. Telefono A: **Invia** → aggiungi una foto e un file PDF → «Genera codice di sessione».
-3. Telefono B: **Ricevi** → «Attiva fotocamera» → inquadra il QR → verifica elenco → «Accetta e ricevi».
-4. Controlla: percentuale, velocità, esito «SHA-256» su ogni file, download o condivisione.
-5. Prova: rifiuto, annullamento, codice scaduto (attendere 10 minuti), codice errato in inserimento manuale,
-   foto scattata al QR e importata con «Da immagine», secondo lotto di file dopo il primo.
+| Sintomo | Causa probabile | Rimedio |
+|---|---|---|
+| "Nessun blocco letto" | QR troppo piccolo o sfocato | avvicina i telefoni, usa *Compatto*, aumenta la luminosità |
+| Avanzamento a scatti | fotocamera lenta o frame rate alto | passa a *Lenta* (4 fps) |
+| "Frame non valido" ripetuti | riflessi o mosso | cambia angolazione, evita controluce |
+| Percentuale ferma al 95% | servono altri simboli di riparazione | lascia scorrere il flusso: il mittente continua a trasmettere |
 
 ---
 
-## 7. Limiti noti e miglioramenti possibili
-
-- **Ripresa dopo interruzione**: non implementata. Se la connessione cade, i file già ricevuti vengono scartati
-  (per non consegnare file parziali non verificati) e si riparte con una nuova sessione.
-- **Memoria per file molto grandi**: i dati ricevuti sono assemblati in `Blob` (il browser li sposta su disco),
-  ma su iOS file da diversi GB possono esaurire la memoria. Non esiste scrittura progressiva portabile:
-  `showSaveFilePicker` è solo Chromium.
-- **Download multipli**: iOS Safari può aprire un solo download alla volta; l'app avvisa e offre la condivisione
-  nativa quando disponibile.
-- **Background**: se il telefono sospende la pagina durante il trasferimento, il canale può interrompersi.
-  Tenere lo schermo acceso; il wake lock non è implementato.
-- **Cartelle**: su iOS il selettore cartelle non esiste; su desktop si possono trascinare cartelle.
-  La struttura delle sottocartelle viene appiattita nei nomi dei file.
-- **TURN**: senza un relay affidabile alcune reti aziendali/4G molto restrittive non riescono a collegarsi.
-- **Segnalazione**: dipende da un servizio esterno; per uso continuativo conviene un PeerServer proprio.
-- **Accessibilità**: base curata, ma non è stato eseguito un audit formale con screen reader.
-- **Miglioramenti**: ripresa a offset con scrittura progressiva dove supportata, wake lock, compilazione WASM di
-  SHA-256, trasferimento in background con service worker, audit WCAG, test E2E in browser reali (Playwright).
-
----
-
-## 8. Privacy e modello di sicurezza
-
-- I file **non vengono mai caricati su un server**: viaggiano su un DataChannel WebRTC cifrato (DTLS).
-  Il server di segnalazione vede solo metadati di connessione (ID di sessione temporanei e indirizzi ICE).
-- Se interviene un relay TURN, il traffico passa dal relay: resta cifrato end-to-end a livello DTLS/SRTP,
-  ma il relay vede gli indirizzi IP e i volumi. L'app dichiara il percorso usato.
-- Il codice di sessione sta nel **fragment** dell'URL: non viene inviato nei riferimenti HTTP.
-- Nessun contenuto, codice o token viene scritto in `console` o in log applicativi.
-- La cronologia locale contiene solo nomi, dimensioni e esito, mai i contenuti, ed è cancellabile.
-- I file ricevuti vivono in memoria come `Blob`: alla chiusura della pagina vengono rilasciati.
-- Le credenziali TURN sono salvate solo nel browser dell'utente; il repository non contiene segreti.
-- Limiti dichiarati: il QR può essere fotografato e usato entro la sua validità; la conferma del destinatario
-  e l'autenticazione HMAC impediscono invii non voluti a chi non possiede il codice.
-
----
-
-## 9. Dipendenze principali e licenze
-
-| Dipendenza | Versione | Licenza | Ruolo |
-|---|---|---|---|
-| [peerjs](https://github.com/peers/peerjs) | 1.5.x | MIT | signaling e DataConnection |
-| [qrcode](https://github.com/soldair/node-qrcode) | 1.5.x | MIT | generazione QR |
-| [jsqr](https://github.com/cozmo/jsQR) | 1.4.x | Apache-2.0 | lettura QR dai frame della fotocamera |
-| [vite](https://vite.dev/) | 8.x | MIT | dev server e build |
-| [typescript](https://www.typescriptlang.org/) | 5.9.x | Apache-2.0 | tipi |
-| [vitest](https://vitest.dev/) | 5.x | MIT | test |
-| [eslint](https://eslint.org/) + [typescript-eslint](https://typescript-eslint.io/) | 10.x / 8.x | MIT | lint |
-| [jsdom](https://github.com/jsdom/jsdom) | 27.x | MIT | ambiente DOM per gli smoke test |
-
-Le librerie QR e il decoder sono caricati **solo quando servono** (code splitting), così l'avvio resta leggero.
-
----
-
-## 10. Struttura del progetto
+## 6. Struttura del progetto
 
 ```
 LensDrop/
-├── index.html                 interfaccia completa (markup statico, nessun template dinamico insicuro)
-├── src/                       codice TypeScript (core + ui + stili)
-├── public/                    manifest PWA, service worker, icone
-├── test/                      test unitari, integrazione e smoke UI
-├── vite.config.ts             base path, dev server
-├── vitest.config.ts           ambiente di test
-├── eslint.config.js           flat config
-└── README.md
+├─ index.html                  # markup unico dell'app (schermate, dialogo diagnostica, sprite SVG)
+├─ src/
+│  ├─ config.ts                # costanti: densità, fps, limiti
+│  ├─ core/
+│  │  ├─ base45.ts             # codifica Base45 (RFC 9285)
+│  │  ├─ bytes.ts              # helper binari
+│  │  ├─ bundle.ts             # contenitore multi-file LDB1 + sanificazione nomi
+│  │  ├─ compression.ts        # gzip via CompressionStream
+│  │  ├─ files.ts              # utilità (formati, download, lettura blob, clipboard)
+│  │  ├─ fountain.ts           # codificatore/decodificatore LT + eliminazione di Gauss
+│  │  ├─ frame.ts              # formato dei frame e validazione
+│  │  ├─ optical.ts            # mittente (sequenza infinita) e destinatario (ricostruzione)
+│  │  ├─ settings.ts           # preferenze locali validate
+│  │  └─ sha256.ts             # SHA-256 incrementale
+│  ├─ styles/                  # base.css (token, vetro) e screens.css (schermate)
+│  └─ ui/
+│     ├─ app.ts                # routing e cronologia
+│     ├─ diagnostics.ts        # log in pagina, copia/download
+│     ├─ send.ts               # selezione contenuti e flusso QR animato
+│     ├─ receive.ts            # fotocamera, avanzamento, verifica, salvataggio
+│     ├─ scanner.ts            # BarcodeDetector o jsQR, torcia, gestione permessi
+│     ├─ qr.ts                 # disegno dei frame
+│     ├─ items.ts              # righe dei contenuti (anteprime, azioni)
+│     ├─ history.ts            # cronologia locale di soli metadati
+│     ├─ settings-screen.ts    # impostazioni e capacità del browser
+│     ├─ theme.ts / dom.ts     # tema e utilità DOM
+│     └─ main.ts               # bootstrap + registrazione del service worker
+├─ public/                     # manifest, icone, service worker
+└─ test/                       # suite Vitest
 ```
 
 ---
 
-## 11. Crediti
+## 7. Sicurezza e privacy
 
-Progetto realizzato per il repository `Progetti` di Valerio Massimo De Cecco.
-Design ispirato al linguaggio visivo «Liquid Glass» di Apple, senza asset proprietari.
-Nessun codice copiato da altri progetti: sono state riutilizzate solo librerie open source con licenza compatibile.
+- **Nessun dato lascia i dispositivi.** Durante il trasferimento non avviene alcuna richiesta di rete: non
+  esiste un server di segnalazione, un relay o un servizio TURN. Il repository ospita solo l'app statica.
+- **Nessun segreto nel frontend**, nessuna chiave API, nessun identificativo utente.
+- **Integrità obbligatoria:** il contenuto viene consegnato solo dopo la verifica SHA-256; nomi e lunghezze
+  dei file ricevuti vengono validati prima di creare i Blob.
+- **Il canale è visibile, non cifrato a livello applicativo.** Chiunque veda lo schermo (o lo riprenda) può
+  leggere gli stessi dati: il QR è il canale. Per contenuti sensibili vale la regola di sempre: controlla chi
+  ti sta intorno. Non esiste autenticazione del destinatario, quindi nessuna conferma di ricezione.
+- **Cronologia locale:** solo nomi, dimensioni, esito e ora, in `localStorage`, cancellabile dall'app.
+- **Nessun file temporaneo su disco:** i contenuti ricevuti restano nella memoria della scheda finché non li
+  salvi; chiudendo la scheda vanno persi.
+- **HTTPS obbligatorio** per `getUserMedia`; la PWA richiede HTTPS anche per il service worker.
+
+---
+
+## 8. Build e deploy su GitHub Pages
+
+Il workflow `.github/workflows/lensdrop-pages.yml` (nella radice del repository) esegue, a ogni push su `main`
+che tocca `LensDrop/**`: `npm ci` → `typecheck` → `lint` → `test` → build con `VITE_BASE=/Progetti/LensDrop/`
+→ artefatto `_site/LensDrop` → `actions/deploy-pages`.
+
+| Variabile | Dove | Significato |
+|---|---|---|
+| `VITE_BASE` | build | Sottopercorso pubblico. Default `/`; sul repository `/Progetti/LensDrop/`. |
+
+Non esistono altre variabili, né segreti: l'app non chiama alcun servizio esterno.
+
+> **Stato del deploy.** L'ultimo run verificato ha completato typecheck, lint, test, build e preparazione
+> dell'artefatto, poi si è fermato su *Configura Pages* con `Resource not accessible by integration (403)`:
+> il token dell'integrazione GitHub disponibile in questa sessione non ha i permessi per creare il sito Pages.
+> **Passo manuale necessario (una volta sola):** repository → *Settings → Pages → Source: **GitHub Actions***,
+> poi *Actions → Deploy LensDrop su GitHub Pages → Re-run*. Fino a quel momento l'URL pubblicato non risponde.
+> L'ambiente di sviluppo di questa sessione non ha accesso di rete a `*.github.io`, quindi l'URL pubblicato non
+> è stato verificabile qui: viene dichiarato solo ciò che è stato realmente osservato.
+
+---
+
+## 9. Servizi esterni e dipendenze
+
+L'app **non usa servizi esterni a runtime**. Librerie incluse nel bundle:
+
+| Dipendenza | Uso | Licenza |
+|---|---|---|
+| [`qrcode`](https://www.npmjs.com/package/qrcode) | generazione delle matrici QR | MIT |
+| [`jsqr`](https://www.npmjs.com/package/jsqr) | decodifica QR quando `BarcodeDetector` manca | Apache-2.0 |
+| `vite`, `typescript`, `eslint`, `vitest`, `jsdom` (solo sviluppo) | build, tipi, lint, test | MIT / Apache-2.0 |
+
+Nessun font o icona remota: tipografia di sistema e sprite SVG inline.
+
+---
+
+## 10. Limiti noti
+
+1. **Velocità**: tra 4 e 15 KB/s. File oltre poche decine di MB restano possibili ma lunghi (nessun limite
+   tecnico bloccante, solo tempo e stabilità dell'inquadratura).
+2. **Nessuna conferma di ricezione**: il canale è unidirezionale. Il mittente non sa se e quando il destinatario
+   ha completato; lo vede solo il destinatario, nella sua schermata.
+3. **Nessuna cifratura applicativa**: il QR è leggibile da chiunque lo inquadri.
+4. **Dipende dall'ottica**: distanza, luminosità, riflessi, messa a fuoco e qualità del sensore cambiano
+   radicalmente il risultato. Le densità basse esistono per questo.
+5. **PWA**: il primo caricamento richiede rete; il funzionamento offline vale dalla seconda apertura.
+6. **iOS/Safari**: niente `BarcodeDetector`, quindi si usa jsQR (più lento e con frame ridotto). La torcia è
+   disponibile solo se il browser la espone.
+7. **Memoria**: il payload viene tenuto in RAM sia in invio sia in ricezione; file molto grandi possono
+   esaurire la memoria delle schede mobili.
+8. **Nessun test su dispositivi fisici** in questa sessione (vedi §5).
+
+---
+
+## 11. Idee non incluse (dichiarate, non nascoste)
+
+- Parità di cifratura con passphrase condivisa a voce (il canale ottico potrebbe trasportare solo il testo cifrato).
+- Trasmissione bidirezionale con le due fotocamere per la ritrasmissione selettiva dei blocchi mancanti.
+- Compressione più aggressiva (WebP/AVIF per le immagini, ricodifica video).
+- Rilevamento automatico della densità in base al ritmo di decodifica.
+
+---
+
+## 12. Riferimenti utili
+
+- RFC 9285 — *The Base45 Data Encoding*.
+- Luby, M. *LT Codes* (2002): le basi dei codici fountain usati qui.
+- Progetti che hanno ispirato l'approccio: LiveDrop (matrice video proprietaria), txqr/decimen, QRDrop,
+  BeamFerry — tutti confermano la scelta di QR animati + fountain code per un canale ottico senza ritorno.
+
+Licenza MIT — Copyright (c) 2026 Valerio Massimo De Cecco.

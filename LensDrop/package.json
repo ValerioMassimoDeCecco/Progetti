@@ -2,7 +2,7 @@
   "name": "lensdrop",
   "private": true,
   "version": "1.0.0",
-  "description": "Trasferisci file, testo, foto, audio e video inquadrando un altro telefono. P2P nel browser.",
+  "description": "Trasferimento di file offline tramite codici QR animati e fotocamera: nessuna rete, nessun server.",
   "type": "module",
   "license": "MIT",
   "scripts": {
@@ -16,7 +16,6 @@
   },
   "dependencies": {
     "jsqr": "^1.4.0",
-    "peerjs": "^1.5.5",
     "qrcode": "^1.5.4"
   },
   "devDependencies": {
@@ -29,5 +28,13 @@
     "typescript-eslint": "^8.72.1",
     "vite": "^8.3.5",
     "vitest": "^5.0.5"
-  }
+  },
+  "keywords": [
+    "qr",
+    "offline",
+    "air-gapped",
+    "fountain-code",
+    "file-transfer",
+    "pwa"
+  ]
 }
