@@ -237,13 +237,18 @@ che tocca `LensDrop/**`: `npm ci` → `typecheck` → `lint` → `test` → buil
 
 Non esistono altre variabili, né segreti: l'app non chiama alcun servizio esterno.
 
-> **Stato del deploy.** L'ultimo run verificato ha completato typecheck, lint, test, build e preparazione
-> dell'artefatto, poi si è fermato su *Configura Pages* con `Resource not accessible by integration (403)`:
-> il token dell'integrazione GitHub disponibile in questa sessione non ha i permessi per creare il sito Pages.
-> **Passo manuale necessario (una volta sola):** repository → *Settings → Pages → Source: **GitHub Actions***,
-> poi *Actions → Deploy LensDrop su GitHub Pages → Re-run*. Fino a quel momento l'URL pubblicato non risponde.
-> L'ambiente di sviluppo di questa sessione non ha accesso di rete a `*.github.io`, quindi l'URL pubblicato non
-> è stato verificabile qui: viene dichiarato solo ciò che è stato realmente osservato.
+> **Stato del deploy (verificato).** GitHub Pages è attivo con sorgente *GitHub Actions* (`build_type: workflow`).
+> Il run del workflow successivo al merge ([#40732323084](https://github.com/ValerioMassimoDeCecco/Progetti/actions/runs/40732323084))
+> ha completato **build e deploy**: typecheck, lint, 48 test, build con `VITE_BASE=/Progetti/LensDrop/`,
+> pubblicazione dell'artefatto `_site/LensDrop`. La pagina pubblicata
+> <https://valeriomassimodececco.github.io/Progetti/LensDrop/> è stata aperta e mostra la nuova versione ottica
+> (titolo «LensDrop — passa i file con uno sguardo», schermate Invia/Ricevi, pannello Diagnostica con il log
+> `Ambiente pronto: fotocamera disponibile, contesto sicuro`, prova che il bundle è stato eseguito), e
+> `…/LensDrop/manifest.webmanifest` risponde con il manifest aggiornato.
+>
+> Nota di trasparenza: la verifica è stata fatta con un lettore HTTP esterno all'ambiente di sviluppo, che non
+> ha accesso diretto a `*.github.io`. **Non** è stata eseguita una prova del trasferimento su due telefoni
+> fisici (vedi §5).
 
 ---
 
