@@ -148,8 +148,9 @@ describe("interfaccia LensDrop", () => {
 
     const dense = document.querySelector<HTMLInputElement>('input[name="density"][value="1200"]');
     if (dense) dense.checked = true;
-    const fast = document.querySelector<HTMLInputElement>('input[name="speed"][value="14"]');
-    if (fast) fast.checked = true;
+    const fastest = document.querySelector<HTMLInputElement>('input[name="speed"][value="30"]');
+    expect(fastest).not.toBeNull();
+    if (fastest) fastest.checked = true;
 
     document
       .querySelector<HTMLFormElement>("#settings-form")
@@ -157,7 +158,7 @@ describe("interfaccia LensDrop", () => {
 
     const stored = JSON.parse(localStorage.getItem("lensdrop.settings.v2") ?? "{}") as Record<string, unknown>;
     expect(stored["blockSize"]).toBe(1200);
-    expect(stored["fps"]).toBe(14);
+    expect(stored["fps"]).toBe(30);
     expect(stored["theme"]).toBe("dark");
 
     const toasts = [...document.querySelectorAll("#toasts .toast")].map((node) => node.textContent ?? "");

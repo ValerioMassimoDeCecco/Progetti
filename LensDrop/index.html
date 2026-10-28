@@ -479,11 +479,17 @@
               <label class="radio"><input type="radio" name="speed" value="4" /><span>Lenta · 4 fps</span></label>
               <label class="radio"><input type="radio" name="speed" value="8" /><span>Normale · 8 fps</span></label>
               <label class="radio"><input type="radio" name="speed" value="14" /><span>Veloce · 14 fps</span></label>
+              <label class="radio"><input type="radio" name="speed" value="30" /><span>Massima · 30 fps (serve decodifica hardware)</span></label>
             </div>
             <label class="switch">
               <input id="setting-keep-awake" type="checkbox" />
               <span>Mantieni lo schermo acceso durante l'invio</span>
             </label>
+            <p class="hint">
+              Oltre 20 fps serve la decodifica hardware (<code>BarcodeDetector</code>, Chrome su Android): con il
+              decoder software di Safari il tetto è ~10–15 frame/s e il guadagno svanisce. A 30 fps servono anche
+              luce intensa e mano ferma, perché il tempo di esposizione della fotocamera si accorcia.
+            </p>
           </div>
 
           <div class="sticky-action">

@@ -45,7 +45,15 @@ export const SPEED_PRESETS: SpeedPreset[] = [
   { id: "lenta", label: "Lenta", hint: "4 fps · fotocamere lente", fps: 4 },
   { id: "normale", label: "Normale", hint: "8 fps · consigliata", fps: 8 },
   { id: "veloce", label: "Veloce", hint: "14 fps · dispositivi recenti", fps: 14 },
+  { id: "massima", label: "Massima", hint: "30 fps · serve decodifica hardware", fps: 30 },
 ];
+
+/**
+ * Frame al secondo oltre i quali il guadagno dipende solo dal destinatario:
+ * senza `BarcodeDetector` (iOS/Safari) jsQR decodifica ~10–15 frame/s, quindi
+ * un flusso più veloce non aumenta la velocità di ricezione.
+ */
+export const HARDWARE_DECODE_FPS_THRESHOLD = 20;
 
 export const DEFAULT_FPS = 8;
 

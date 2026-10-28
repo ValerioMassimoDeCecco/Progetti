@@ -7,7 +7,7 @@
  * allo scope del worker.
  */
 
-const CACHE = "lensdrop-shell-v2";
+const CACHE = "lensdrop-shell-v3";
 const CORE = ["./", "./index.html", "./manifest.webmanifest", "./icons/icon-192.png", "./icons/favicon.svg"];
 
 self.addEventListener("install", (event) => {

@@ -21,7 +21,7 @@ lo schermo mostra un flusso di codici QR animati, l'altro telefono li inquadra e
 | Area | Dettagli |
 |---|---|
 | Contenuti | File di qualsiasi tipo, cartelle intere, immagini, video, audio, testo incollato. Più elementi in un'unica sessione. |
-| Invio | Selezione con drag & drop, rimozione dei singoli elementi, anteprima immagini, modalità solo testo, densità e velocità regolabili, pausa/ripresa, schermo intero, blocco dello spegnimento. |
+| Invio | Selezione con drag & drop, rimozione dei singoli elementi, anteprima immagini, modalità solo testo, densità regolabile, **quattro velocità (4 / 8 / 14 / 30 fps)**, pausa/ripresa, schermo intero, blocco dello spegnimento. |
 | Ricezione | Fotocamera posteriore, torcia quando disponibile, avanzamento reale per blocchi, velocità, tempo residuo, ripresa automatica dopo frame persi. |
 | Risultato | Verifica SHA-256, anteprima immagini/audio/video, estratto dei file di testo, copia del testo, salvataggio singolo o multiplo, condivisione nativa. |
 | Affidabilità | Codici fountain (LT): i frame persi non richiedono ripartenze e non serve alcun canale di ritorno. |
@@ -101,9 +101,44 @@ sovraccarico dei codici LT (**misurato: 1,3–1,8×** a seconda delle perdite).
 | Compatto, 8 fps | ~3,8 KB/s | ~4 min |
 | Equilibrato, 8 fps | ~5,1 KB/s | ~3 min |
 | Denso, 14 fps | ~15 KB/s | ~1 min |
+| Denso, 30 fps *(con decodifica hardware)* | ~21 KB/s teorici, ~12–20 KB/s reali | ~1 min |
 
-Sono stime prudenti, non promesse: contano schermo luminoso, mano ferma e distanza ravvicinata. Per file
-grandi l'app mostra sempre la durata prevista e un avviso esplicito prima di partire.
+### Le quattro velocità, e perché i 30 fps sono veri
+
+| Preset | fps | Intervallo | A chi serve |
+|---|---|---|---|
+| Lenta | 4 | 250 ms | telefoni lontani, luce debole, QR densi |
+| Normale (default) | 8 | 125 ms | caso generale, decoder software su iOS |
+| Veloce | 14 | 71 ms | schermo luminoso, mano ferma, Chrome/Android |
+| **Massima** | **30** | **33 ms** | solo con `BarcodeDetector` (hardware): guadagno reale 2–3× |
+
+Il pulsante "30 fps" non è cosmetico: nel codice non esiste più alcun limite artificiale sotto i 33 ms
+(la vecchia formula `Math.max(40, 1000/fps)` avrebbe bloccato la cadenza a 25 fps e ora è sostituita da
+`frameIntervalMs()`, minimo 8 ms). Perché la cadenza tenga davvero:
+
+1. **Pre-rendering con coda limitata** (`FrameStream`): la produzione dei frame avviene in canvas fuori
+   schermo mentre il frame precedente è a video; la coda si ferma a 8 frame (5 sotto i 20 fps) per non
+   accumulare ritardo.
+2. **Scadenze fisse, non `setTimeout` cumulativi**: ogni frame è pianificato su `inizio + n × intervallo`,
+   quindi il ritardo non si somma e non c'è deriva; dopo uno stallo la pianificazione si riallinea invece di
+   sparare una raffica di frame arretrati.
+3. **Scala dei moduli intera**: il QR viene disegnato con un numero intero di pixel per modulo (fattore scelto
+   da `planPixelSize`), altrimenti i moduli frazionari rendono il codice sfocato e il decoder lo perde proprio
+   quando va veloce.
+4. **Metriche visibili**: la schermata di invio mostra gli fps *misurati* e le sottoalimentazioni della coda,
+   così si vede subito se il dispositivo non regge i 30 fps e conviene scendere.
+5. **Cambio di velocità a caldo**: scegliere un'altra velocità durante l'invio ha effetto immediato
+   (`FrameStream.setFps`), senza riavviare la sessione né perdere i frame già preparati.
+
+Il collo di bottiglia a 30 fps è il **ricevitore**, non il mittente: jsQR (Safari, Firefox) decodifica
+~10–15 frame/s a 700 byte, quindi oltre i 14 fps non si guadagna nulla. Con `BarcodeDetector` (Chrome su
+Android) il decoder è hardware e i 30 fps diventano utili. Il ricevitore adatta da solo la risoluzione di
+decodifica (480–780 px) al costo misurato, così resta agganciato anche quando la scena è difficile.
+
+Sono stime prudenti, non promesse: contano schermo luminoso, mano ferma e distanza ravvicinata. A 30 fps
+conta anche il tempo di esposizione della fotocamera, che si accorcia: senza luce abbondante i frame mossi
+aumentano e il guadagno si annulla. Per file grandi l'app mostra sempre la durata prevista e un avviso
+esplicito prima di partire.
 
 ---
 
@@ -131,7 +166,7 @@ npm run build      # typecheck + build di produzione
 
 ## 5. Test
 
-`npx vitest run` → **10 file, 48 test**.
+`npx vitest run` → **13 file, 69 test**.
 
 | File | Copre |
 |---|---|
@@ -144,7 +179,10 @@ npm run build      # typecheck + build di produzione
 | `test/sha256.test.ts` | hash incrementale e confronto con `node:crypto` |
 | `test/markup.test.ts` | ogni `#id` usato dal codice esiste, nessun id duplicato, icone definite |
 | `test/ui-smoke.test.ts` | routing, tema, aggiunta/rimozione contenuti, salvataggio impostazioni, diagnostica (jsdom) |
-| `test/settings.test.ts` | valori ammessi, fallback, persistenza delle preferenze |
+| `test/settings.test.ts` | valori ammessi (4/8/14/30 fps, 520/700/1200 byte), fallback, persistenza delle preferenze |
+| `test/pacing.test.ts` | intervallo di frame, piano dei tick senza deriva, fps effettivi e stima di throughput |
+| `test/qr-geometry.test.ts` | scala intera dei moduli, dimensione del canvas, densità per versione QR |
+| `test/frame-stream.test.ts` | coda limitata, cadenza a 30 fps con orologio virtuale, sottoalimentazioni, pausa e ripresa |
 
 **Cosa i test non coprono:** l'ottica reale (messa a fuoco, riflessi, luminosità, distanza) e il
 comportamento su telefoni fisici. Non è stato possibile eseguire una prova su due dispositivi in questa
@@ -166,6 +204,8 @@ Cosa guardare in caso di problemi (pannello **Diagnostica**, icona dell'insetto 
 |---|---|---|
 | "Nessun blocco letto" | QR troppo piccolo o sfocato | avvicina i telefoni, usa *Compatto*, aumenta la luminosità |
 | Avanzamento a scatti | fotocamera lenta o frame rate alto | passa a *Lenta* (4 fps) |
+| A 30 fps non si guadagna nulla | decoder software (Safari/Firefox) | resta su *Veloce* (14 fps) o *Normale* (8 fps) |
+| Fps misurati molto sotto il preset | CPU occupata o canvas grande | usa *Compatto* e chiudi le altre app |
 | "Frame non valido" ripetuti | riflessi o mosso | cambia angolazione, evita controluce |
 | Percentuale ferma al 95% | servono altri simboli di riparazione | lascia scorrere il flusso: il mittente continua a trasmettere |
 
@@ -268,7 +308,8 @@ Nessun font o icona remota: tipografia di sistema e sprite SVG inline.
 
 ## 10. Limiti noti
 
-1. **Velocità**: tra 4 e 15 KB/s. File oltre poche decine di MB restano possibili ma lunghi (nessun limite
+1. **Velocità**: da ~4 KB/s (*Lenta*, 4 fps) a ~21 KB/s teorici (*Massima*, 30 fps); sopra i 14 fps il
+   guadagno richiede la decodifica hardware del destinatario, quindi il valore tipico resta 4–15 KB/s. File oltre poche decine di MB restano possibili ma lunghi (nessun limite
    tecnico bloccante, solo tempo e stabilità dell'inquadratura).
 2. **Nessuna conferma di ricezione**: il canale è unidirezionale. Il mittente non sa se e quando il destinatario
    ha completato; lo vede solo il destinatario, nella sua schermata.
@@ -276,7 +317,8 @@ Nessun font o icona remota: tipografia di sistema e sprite SVG inline.
 4. **Dipende dall'ottica**: distanza, luminosità, riflessi, messa a fuoco e qualità del sensore cambiano
    radicalmente il risultato. Le densità basse esistono per questo.
 5. **PWA**: il primo caricamento richiede rete; il funzionamento offline vale dalla seconda apertura.
-6. **iOS/Safari**: niente `BarcodeDetector`, quindi si usa jsQR (più lento e con frame ridotto). La torcia è
+6. **iOS/Safari**: niente `BarcodeDetector`, quindi si usa jsQR (più lento, ~10–15 frame/s): il preset a
+   30 fps è selezionabile ma non porta vantaggi su questi dispositivi. La torcia è
    disponibile solo se il browser la espone.
 7. **Memoria**: il payload viene tenuto in RAM sia in invio sia in ricezione; file molto grandi possono
    esaurire la memoria delle schede mobili.
