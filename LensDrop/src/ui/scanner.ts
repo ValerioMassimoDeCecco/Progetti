@@ -1,4 +1,18 @@
-/** Caricamento su richiesta: il decoder QR pesa e serve solo in ricezione. */
+/**
+ * Lettore ottico: fotocamera + decodifica QR.
+ *
+ * Due strade, scelte a runtime:
+ * 1. `BarcodeDetector` nativo (Chrome/Android): decodifica hardware, molto veloce;
+ * 2. `jsQR` in WebAssembly/JS (Safari, Firefox): più lento, quindi il frame viene
+ *    ridotto prima della decodifica e non si accumulano frame in coda.
+ *
+ * Ogni frame scartato (mosso, sfocato, controluce) è normale: il protocollo
+ * fountain non richiede una sequenza precisa. Per questo la diagnostica registra
+ * il ritmo di decodifica invece di trattare i frame persi come errori.
+ */
+
+import { diagnostics } from "./diagnostics";
+
 interface Decoder {
   (
     data: Uint8ClampedArray,
@@ -7,41 +21,63 @@ interface Decoder {
     options?: { inversionAttempts?: "dontInvert" | "onlyInvert" | "attemptBoth" | "invertFirst" },
   ): { data: string } | null;
 }
+
+interface DetectedBarcode {
+  rawValue: string;
+}
+
+interface BarcodeDetectorLike {
+  detect(source: CanvasImageSource): Promise<DetectedBarcode[]>;
+}
+
+interface BarcodeDetectorCtor {
+  new (options?: { formats?: string[] }): BarcodeDetectorLike;
+  getSupportedFormats?: () => Promise<string[]>;
+}
+
 let decoderPromise: Promise<Decoder> | null = null;
 
 function loadDecoder(): Promise<Decoder> {
   decoderPromise ??= import("jsqr").then((module) => module.default as unknown as Decoder);
   return decoderPromise;
 }
-import { normalizeCode } from "../core/base32";
-import { parseSessionLink } from "../core/links";
 
 export type ScannerState = "idle" | "starting" | "live" | "error";
 
-interface ScannerCallbacks {
-  onCode: (code: string, expiresAt: number | null) => void;
-  onError: (message: string) => void;
-  onState?: (state: ScannerState) => void;
+export interface ScannerStats {
+  /** Frame al secondo effettivamente decodificati. */
+  decodeRate: number;
+  /** QR riconosciuti in totale. */
+  hits: number;
+  /** Frame processati senza QR. */
+  misses: number;
 }
 
-const SCAN_INTERVAL_MS = 90;
-const MAX_DECODE_WIDTH = 720;
+interface ScannerCallbacks {
+  onText: (text: string) => void;
+  onError: (message: string) => void;
+  onState?: (state: ScannerState) => void;
+  onStats?: (stats: ScannerStats) => void;
+}
 
-/**
- * Lettore QR basato su getUserMedia + jsQR.
- * - richiede un gesto utente (iOS) e un contesto sicuro (HTTPS);
- * - aggiorna i frame su un canvas ridotto per contenere i consumi;
- * - ferma e libera sempre track, animazione e stream.
- */
-export class QrScanner {
+/** Larghezza massima del frame passato a jsQR: oltre si perde solo tempo. */
+const MAX_DECODE_WIDTH = 780;
+const MIN_DECODE_INTERVAL_MS = 33;
+
+export class OpticalScanner {
   private stream: MediaStream | null = null;
-  private animationFrame = 0;
-  private lastScan = 0;
-  private running = false;
-  private canvas = document.createElement("canvas");
-  private torchOn = false;
-  private hasTorch = false;
+  private track: MediaStreamTrack | null = null;
+  private detector: BarcodeDetectorLike | null = null;
   private decode: Decoder | null = null;
+  private canvas = document.createElement("canvas");
+  private frameHandle = 0;
+  private running = false;
+  private busy = false;
+  private lastDecodeAt = 0;
+  private torchOn = false;
+  private hits = 0;
+  private misses = 0;
+  private decodedTimestamps: number[] = [];
 
   constructor(
     private readonly video: HTMLVideoElement,
@@ -52,85 +88,81 @@ export class QrScanner {
     return this.running;
   }
 
-  get isTorchAvailable(): boolean {
-    return this.hasTorch;
+  get hasTorch(): boolean {
+    const capabilities = this.track?.getCapabilities?.() as { torch?: boolean } | undefined;
+    return capabilities?.torch === true;
+  }
+
+  get stats(): ScannerStats {
+    const now = Date.now();
+    this.decodedTimestamps = this.decodedTimestamps.filter((at) => now - at < 2000);
+    return {
+      decodeRate: this.decodedTimestamps.length / 2,
+      hits: this.hits,
+      misses: this.misses,
+    };
   }
 
   async start(): Promise<void> {
     if (this.running) return;
-    this.callbacks.onState?.("starting");
 
     if (!window.isSecureContext) {
-      this.fail("La fotocamera richiede una connessione sicura (HTTPS).");
+      this.fail("La fotocamera richiede HTTPS (o localhost).");
       return;
     }
     if (!navigator.mediaDevices?.getUserMedia) {
-      this.fail("Questo browser non espone l'accesso alla fotocamera.");
+      this.fail("Questo browser non espone la fotocamera (getUserMedia assente).");
       return;
     }
 
+    this.callbacks.onState?.("starting");
+    diagnostics.info("Richiesta accesso alla fotocamera…");
+
     try {
-      // La fotocamera parte subito (gesto utente recente), il decoder si carica dopo.
-      const stream = await this.requestStream();
-      this.stream = stream;
-      this.video.srcObject = stream;
-      this.video.setAttribute("playsinline", "true");
-      await this.video.play();
-      this.hasTorch = this.detectTorch(stream);
-      this.decode = await loadDecoder();
-      this.running = true;
-      this.callbacks.onState?.("live");
-      this.loop();
+      this.stream = await this.requestStream();
     } catch (error) {
-      this.releaseStream();
-      this.fail(this.describeCameraError(error));
+      this.fail(describeCameraError(error));
+      return;
     }
-  }
 
-  stop(): void {
-    this.running = false;
-    if (this.animationFrame) {
-      cancelAnimationFrame(this.animationFrame);
-      this.animationFrame = 0;
+    const [track] = this.stream.getVideoTracks();
+    if (!track) {
+      this.fail("Nessuna traccia video disponibile.");
+      return;
     }
-    this.releaseStream();
-    this.callbacks.onState?.("idle");
-  }
+    this.track = track;
 
-  async toggleTorch(): Promise<boolean> {
-    const track = this.stream?.getVideoTracks()[0];
-    if (!track || !this.hasTorch) return false;
+    const settings = track.getSettings();
+    diagnostics.ok(
+      `Fotocamera attiva: ${track.label || "sconosciuta"} · ${settings.width ?? "?"}×${settings.height ?? "?"} · ${
+        this.hasTorch ? "torcia disponibile" : "senza torcia"
+      }`,
+    );
+
+    // La messa a fuoco continua è ciò che rende leggibile un QR in movimento.
     try {
-      this.torchOn = !this.torchOn;
-      await track.applyConstraints({
-        advanced: [{ torch: this.torchOn } as unknown as MediaTrackConstraintSet],
-      });
-      return this.torchOn;
+      await track.applyConstraints({ advanced: [{ focusMode: "continuous" } as MediaTrackConstraintSet] });
     } catch {
-      this.torchOn = false;
-      this.hasTorch = false;
-      return false;
+      diagnostics.info("Messa a fuoco continua non supportata: uso l'impostazione predefinita.");
     }
-  }
 
-  /** Legge un QR da un'immagine scelta dall'utente (fallback senza fotocamera). */
-  static async scanImage(file: File): Promise<{ code: string; expiresAt: number | null } | null> {
-    const bitmap = await QrScanner.loadBitmap(file);
+    this.video.srcObject = this.stream;
+    this.video.setAttribute("playsinline", "true");
+    this.video.muted = true;
+
     try {
-      const scale = Math.min(1, 1400 / Math.max(bitmap.width, bitmap.height));
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-      const context = canvas.getContext("2d", { willReadFrequently: true });
-      if (!context) throw new Error("Canvas non disponibile.");
-      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-      const image = context.getImageData(0, 0, canvas.width, canvas.height);
-      const decode = await loadDecoder();
-      const result = decode(image.data, image.width, image.height, { inversionAttempts: "attemptBoth" });
-      return result ? interpretPayload(result.data) : null;
-    } finally {
-      if ("close" in bitmap && typeof bitmap.close === "function") bitmap.close();
+      await this.video.play();
+    } catch {
+      this.fail("Il browser ha bloccato la riproduzione del video: tocca di nuovo il pulsante.");
+      return;
     }
+
+    await this.prepareDetector();
+
+    this.running = true;
+    this.callbacks.onState?.("live");
+    diagnostics.ok("Scansione avviata.");
+    this.schedule();
   }
 
   private async requestStream(): Promise<MediaStream> {
@@ -140,136 +172,162 @@ export class QrScanner {
         facingMode: { ideal: "environment" },
         width: { ideal: 1280 },
         height: { ideal: 720 },
+        frameRate: { ideal: 30, max: 60 },
       },
     };
+
     try {
       return await navigator.mediaDevices.getUserMedia(preferred);
     } catch (error) {
-      if (error instanceof DOMException && error.name === "OverconstrainedError") {
-        return navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      // Alcuni browser rifiutano i vincoli ideali: si riprova con la camera di default.
+      if (error instanceof DOMException && (error.name === "OverconstrainedError" || error.name === "NotFoundError")) {
+        diagnostics.warn("Camera posteriore non disponibile: provo la fotocamera predefinita.");
+        return await navigator.mediaDevices.getUserMedia({ audio: false, video: true });
       }
       throw error;
     }
   }
 
-  private loop = (): void => {
-    if (!this.running) return;
-    this.animationFrame = requestAnimationFrame(this.loop);
-    const now = performance.now();
-    if (now - this.lastScan < SCAN_INTERVAL_MS) return;
-    this.lastScan = now;
-
-    const video = this.video;
-    if (video.readyState < video.HAVE_CURRENT_DATA || video.videoWidth === 0) return;
-
-    const scale = Math.min(1, MAX_DECODE_WIDTH / video.videoWidth);
-    const width = Math.round(video.videoWidth * scale);
-    const height = Math.round(video.videoHeight * scale);
-    if (width === 0 || height === 0) return;
-
-    if (this.canvas.width !== width || this.canvas.height !== height) {
-      this.canvas.width = width;
-      this.canvas.height = height;
+  private async prepareDetector(): Promise<void> {
+    const ctor = (window as unknown as { BarcodeDetector?: BarcodeDetectorCtor }).BarcodeDetector;
+    if (ctor) {
+      try {
+        const formats = (await ctor.getSupportedFormats?.()) ?? ["qr_code"];
+        if (formats.includes("qr_code")) {
+          this.detector = new ctor({ formats: ["qr_code"] });
+          diagnostics.ok("Decodifica hardware (BarcodeDetector) disponibile.");
+          return;
+        }
+      } catch {
+        // Si passa al decoder software.
+      }
     }
-    const context = this.canvas.getContext("2d", { willReadFrequently: true });
-    if (!context) return;
-    context.drawImage(video, 0, 0, width, height);
-    const image = context.getImageData(0, 0, width, height);
-    if (!this.decode) return;
-    const result = this.decode(image.data, width, height, { inversionAttempts: "dontInvert" });
-    if (!result) return;
-
-    const interpreted = interpretPayload(result.data);
-    if (!interpreted) {
-      this.callbacks.onError("Il codice inquadrato non è un invito LensDrop valido.");
-      return;
-    }
-    this.running = false;
-    cancelAnimationFrame(this.animationFrame);
-    this.animationFrame = 0;
-    this.releaseStream();
-    this.callbacks.onCode(interpreted.code, interpreted.expiresAt);
-  };
-
-  private detectTorch(stream: MediaStream): boolean {
-    const track = stream.getVideoTracks()[0];
-    if (!track || typeof track.getCapabilities !== "function") return false;
-    const capabilities = track.getCapabilities() as MediaTrackCapabilities & { torch?: boolean };
-    return capabilities.torch === true;
+    this.decode = await loadDecoder();
+    diagnostics.info("Decodifica software (jsQR): il frame rate effettivo dipende dal processore.");
   }
 
-  private releaseStream(): void {
-    this.torchOn = false;
-    this.stream?.getTracks().forEach((track) => track.stop());
+  private schedule(): void {
+    if (!this.running) return;
+    this.frameHandle = requestAnimationFrame(() => {
+      void this.tick();
+    });
+  }
+
+  private async tick(): Promise<void> {
+    if (!this.running) return;
+
+    const now = performance.now();
+    if (this.busy || this.video.readyState < 2 || now - this.lastDecodeAt < MIN_DECODE_INTERVAL_MS) {
+      this.schedule();
+      return;
+    }
+
+    this.busy = true;
+    this.lastDecodeAt = now;
+
+    try {
+      const values = await this.decodeFrame();
+      for (const value of values) {
+        if (!value) continue;
+        this.hits += 1;
+        this.decodedTimestamps.push(Date.now());
+        this.callbacks.onText(value);
+      }
+      if (values.length === 0) this.misses += 1;
+    } catch (error) {
+      diagnostics.warn(`Errore di decodifica: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      this.busy = false;
+      this.callbacks.onStats?.(this.stats);
+      this.schedule();
+    }
+  }
+
+  private async decodeFrame(): Promise<string[]> {
+    if (this.detector) {
+      const codes = await this.detector.detect(this.video);
+      return codes.map((code) => code.rawValue);
+    }
+
+    const decode = this.decode;
+    if (!decode) return [];
+
+    const width = this.video.videoWidth;
+    const height = this.video.videoHeight;
+    if (width === 0 || height === 0) return [];
+
+    const scale = Math.min(1, MAX_DECODE_WIDTH / width);
+    const targetWidth = Math.round(width * scale);
+    const targetHeight = Math.round(height * scale);
+
+    if (this.canvas.width !== targetWidth || this.canvas.height !== targetHeight) {
+      this.canvas.width = targetWidth;
+      this.canvas.height = targetHeight;
+    }
+
+    const context = this.canvas.getContext("2d", { willReadFrequently: true });
+    if (!context) return [];
+
+    context.drawImage(this.video, 0, 0, targetWidth, targetHeight);
+    const image = context.getImageData(0, 0, targetWidth, targetHeight);
+    const result = decode(image.data, targetWidth, targetHeight, { inversionAttempts: "dontInvert" });
+    return result ? [result.data] : [];
+  }
+
+  async setTorch(on: boolean): Promise<boolean> {
+    if (!this.track || !this.hasTorch) return this.torchOn;
+    try {
+      await this.track.applyConstraints({ advanced: [{ torch: on } as MediaTrackConstraintSet] });
+      this.torchOn = on;
+      diagnostics.info(`Torcia ${on ? "accesa" : "spenta"}.`);
+    } catch {
+      diagnostics.warn("Il browser ha rifiutato il controllo della torcia.");
+    }
+    return this.torchOn;
+  }
+
+  async stop(): Promise<void> {
+    this.running = false;
+    this.busy = false;
+    if (this.frameHandle) cancelAnimationFrame(this.frameHandle);
+    this.frameHandle = 0;
+
+    if (this.torchOn) await this.setTorch(false);
+
+    for (const track of this.stream?.getTracks() ?? []) track.stop();
     this.stream = null;
-    if (this.video.srcObject) this.video.srcObject = null;
+    this.track = null;
+    this.video.srcObject = null;
+    this.detector = null;
+    this.callbacks.onState?.("idle");
+    diagnostics.info("Fotocamera rilasciata.");
   }
 
   private fail(message: string): void {
+    this.running = false;
     this.callbacks.onState?.("error");
     this.callbacks.onError(message);
-  }
-
-  private describeCameraError(error: unknown): string {
-    if (error instanceof DOMException) {
-      switch (error.name) {
-        case "NotAllowedError":
-        case "SecurityError":
-          return "Permesso fotocamera negato. Puoi inserire il codice a mano o caricare un'immagine del QR.";
-        case "NotFoundError":
-        case "OverconstrainedError":
-          return "Nessuna fotocamera disponibile su questo dispositivo.";
-        case "NotReadableError":
-          return "La fotocamera è occupata da un'altra app. Chiudila e riprova.";
-        case "AbortError":
-          return "Attivazione della fotocamera interrotta.";
-        default:
-          return `Fotocamera non disponibile (${error.name}).`;
-      }
-    }
-    return "Impossibile attivare la fotocamera.";
-  }
-
-  private static async loadBitmap(file: File): Promise<ImageBitmap | HTMLImageElement> {
-    if (typeof createImageBitmap === "function") {
-      try {
-        return await createImageBitmap(file);
-      } catch {
-        // Fallback sotto (HEIC o formati non decodificabili da createImageBitmap).
-      }
-    }
-    return new Promise<HTMLImageElement>((resolve, reject) => {
-      const url = URL.createObjectURL(file);
-      const image = new Image();
-      image.onload = () => {
-        URL.revokeObjectURL(url);
-        resolve(image);
-      };
-      image.onerror = () => {
-        URL.revokeObjectURL(url);
-        reject(new Error("Immagine non leggibile."));
-      };
-      image.src = url;
-    });
+    diagnostics.error(`Fotocamera: ${message}`);
+    void this.stop();
   }
 }
 
-/**
- * Estrae codice e scadenza da un payload QR: link LensDrop oppure codice nudo.
- * Qualsiasi altro contenuto viene rifiutato.
- */
-export function interpretPayload(
-  payload: string,
-): { code: string; expiresAt: number | null } | null {
-  const trimmed = payload.trim();
-  if (trimmed.length > 2048) return null;
-  const fromLink = parseSessionLink(trimmed);
-  if (fromLink) {
-    return {
-      code: fromLink.code,
-      expiresAt: Number.isFinite(fromLink.expiresAt) ? fromLink.expiresAt : null,
-    };
+function describeCameraError(error: unknown): string {
+  if (error instanceof DOMException) {
+    switch (error.name) {
+      case "NotAllowedError":
+        return "Permesso fotocamera negato: riabilitalo nelle impostazioni del sito e riprova.";
+      case "NotFoundError":
+        return "Nessuna fotocamera trovata su questo dispositivo.";
+      case "NotReadableError":
+        return "La fotocamera è occupata da un'altra app o scheda.";
+      case "OverconstrainedError":
+        return "La fotocamera richiesta non esiste: provo con quella predefinita.";
+      case "SecurityError":
+        return "La fotocamera è bloccata dal browser in questa pagina (serve HTTPS).";
+      default:
+        return `Accesso alla fotocamera non riuscito (${error.name}).`;
+    }
   }
-  const direct = normalizeCode(trimmed);
-  return direct ? { code: direct, expiresAt: null } : null;
+  return error instanceof Error ? error.message : "Accesso alla fotocamera non riuscito.";
 }

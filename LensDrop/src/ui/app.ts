@@ -1,76 +1,57 @@
 /** Bootstrap dell'interfaccia: routing, tema, cronologia, avvisi globali. */
 
-import { formatCode, normalizeCode } from "../core/base32";
-import { formatBytes, formatClock, formatRelative, isSecureContextAvailable, supportsWebRtc } from "../core/files";
-import { clear, confirmDialog, must, setText, show, toast } from "./dom";
+import { formatBytes, formatRelative, isSecureContextAvailable } from "../core/files";
+import { clear, confirmDialog, must, show, toast } from "./dom";
+import { initDiagnostics, diagnostics } from "./diagnostics";
 import { clearHistory, loadHistory } from "./history";
 import { ReceiveScreen } from "./receive";
 import { SendScreen } from "./send";
 import { SettingsScreen } from "./settings-screen";
 import { initTheme } from "./theme";
 
-type Route =
-  | { name: "home" }
-  | { name: "send" }
-  | { name: "receive" }
-  | { name: "join"; code: string; expiresAt: number | null }
-  | { name: "history" }
-  | { name: "settings" }
-  | { name: "notfound" };
+type RouteName = "home" | "send" | "receive" | "history" | "settings" | "notfound";
 
-const SCREEN_SELECTORS = {
+const SCREEN_SELECTORS: Record<RouteName, string> = {
   home: "#screen-home",
   send: "#screen-send",
   receive: "#screen-receive",
-  join: "#screen-join",
   history: "#screen-history",
   settings: "#screen-settings",
   notfound: "#screen-notfound",
-} as const;
+};
 
 const sendScreen = new SendScreen();
 const receiveScreen = new ReceiveScreen();
 const settingsScreen = new SettingsScreen();
 
-let currentScreen: keyof typeof SCREEN_SELECTORS | null = null;
-let pendingJoin: { code: string; expiresAt: number | null } | null = null;
+let currentScreen: RouteName | null = null;
+let booted = false;
 
-function parseRoute(): Route {
+function parseRoute(): RouteName {
   const raw = window.location.hash.replace(/^#\/?/, "");
-  const [rawPath = "", rawQuery = ""] = raw.split("?");
-  const path = rawPath.replace(/\/+$/, "");
-  const params = new URLSearchParams(rawQuery);
-
+  const path = raw.split("?")[0]?.replace(/\/+$/, "") ?? "";
   switch (path) {
     case "":
-      return { name: "home" };
+      return "home";
     case "send":
-      return { name: "send" };
+      return "send";
     case "receive":
-      return { name: "receive" };
-    case "join": {
-      const expiration = Number(params.get("e"));
-      return {
-        name: "join",
-        code: params.get("c") ?? "",
-        expiresAt: Number.isFinite(expiration) && expiration > 0 ? expiration * 1000 : null,
-      };
-    }
+      return "receive";
     case "history":
-      return { name: "history" };
+      return "history";
     case "settings":
-      return { name: "settings" };
+      return "settings";
     default:
-      return { name: "notfound" };
+      return "notfound";
   }
 }
 
-function showScreen(name: keyof typeof SCREEN_SELECTORS): void {
+function showScreen(name: RouteName): void {
   for (const selector of Object.values(SCREEN_SELECTORS)) {
     must<HTMLElement>(selector).hidden = true;
   }
   must<HTMLElement>(SCREEN_SELECTORS[name]).hidden = false;
-  if (currentScreen !== name) {
+  if (currentScreen !== name && currentScreen !== null) {
     window.scrollTo({ top: 0, behavior: "auto" });
   }
   currentScreen = name;
@@ -78,9 +59,12 @@ function showScreen(name: keyof typeof SCREEN_SELECTORS): void {
 
 function route(): void {
   const next = parseRoute();
-  if (currentScreen === "receive" && next.name !== "receive") receiveScreen.hide();
 
-  switch (next.name) {
+  // Uscendo da invio o ricezione, le risorse hardware vanno sempre rilasciate.
+  if (currentScreen === "send" && next !== "send") sendScreen.hide();
+  if (currentScreen === "receive" && next !== "receive") receiveScreen.hide();
+
+  switch (next) {
     case "send":
       showScreen("send");
       sendScreen.show();
@@ -88,15 +72,6 @@ function route(): void {
     case "receive":
       showScreen("receive");
       receiveScreen.show();
-      if (pendingJoin) {
-        const join = pendingJoin;
-        pendingJoin = null;
-        void receiveScreen.connectWithCode(join.code, join.expiresAt);
-      }
-      break;
-    case "join":
-      showScreen("join");
-      renderJoin(next);
       break;
     case "history":
       showScreen("history");
@@ -116,48 +91,9 @@ function route(): void {
   }
 }
 
-function renderJoin(routeData: Extract<Route, { name: "join" }>): void {
-  const code = normalizeCode(routeData.code);
-  const codeEl = must("#join-code");
-  const expiryEl = must("#join-expiry");
-  const errorBox = must<HTMLElement>("#join-error");
-  const connectButton = must<HTMLButtonElement>("#join-connect");
-  errorBox.hidden = true;
-
-  if (!code) {
-    setText(codeEl, "—");
-    setText(expiryEl, "Il link non contiene un codice di sessione valido.");
-    connectButton.disabled = true;
-    return;
-  }
-
-  setText(codeEl, formatCode(code));
-  if (routeData.expiresAt === null) {
-    setText(expiryEl, "Nessuna scadenza indicata nel link.");
-  } else if (Date.now() > routeData.expiresAt) {
-    setText(expiryEl, "Questo invito è scaduto: chiedi al mittente un nuovo codice.");
-    connectButton.disabled = true;
-    return;
-  } else {
-    setText(expiryEl, `Valido fino alle ${formatClock(new Date(routeData.expiresAt))}.`);
-  }
-
-  connectButton.disabled = false;
-  connectButton.onclick = () => {
-    pendingJoin = { code, expiresAt: routeData.expiresAt };
-    if (window.location.hash === "#/receive") {
-      const join = pendingJoin;
-      pendingJoin = null;
-      void receiveScreen.connectWithCode(join.code, join.expiresAt);
-    } else {
-      window.location.hash = "#/receive";
-    }
-  };
-}
-
 const OUTCOME_LABEL = {
   ok: "completato",
-  cancelled: "annullato",
+  cancelled: "interrotto",
   error: "errore",
 } as const;
 
@@ -166,26 +102,29 @@ function renderHistory(): void {
   const list = must<HTMLUListElement>("#history-list");
   const empty = must<HTMLElement>("#history-empty");
   const clearButton = must<HTMLButtonElement>("#history-clear");
+
   clear(list);
   show(empty, entries.length === 0);
+  show(list, entries.length > 0);
   clearButton.disabled = entries.length === 0;
 
   for (const entry of entries) {
-    const li = document.createElement("li");
-    li.className = "history-row";
+    const row = document.createElement("li");
+    row.className = "history-row";
 
     const direction = document.createElement("span");
     direction.className = `history-row__dir${entry.direction === "out" ? " history-row__dir--out" : ""}`;
     direction.setAttribute("aria-hidden", "true");
-    const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
-    use.setAttribute("href", entry.direction === "out" ? "#i-send" : "#i-receive");
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.setAttribute("class", "icon");
+    const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+    use.setAttribute("href", entry.direction === "out" ? "#i-send" : "#i-receive");
     svg.append(use);
     direction.append(svg);
 
     const body = document.createElement("div");
     body.className = "history-row__body";
+
     const title = document.createElement("span");
     title.className = "history-row__title";
     const first = entry.files[0]?.name;
@@ -197,12 +136,16 @@ function renderHistory(): void {
         : entry.files.length === 1 && first
           ? first
           : `${entry.files.length} contenuti${first ? ` · ${first}` : ""}`;
+
     const meta = document.createElement("span");
     meta.className = "history-row__meta";
-    meta.textContent = `${entry.direction === "out" ? "Inviato" : "Ricevuto"} · ${formatBytes(entry.totalBytes)} · ${formatRelative(entry.at)} · ${OUTCOME_LABEL[entry.outcome]}`;
+    meta.textContent = `${entry.direction === "out" ? "Inviato" : "Ricevuto"} · ${formatBytes(
+      entry.totalBytes,
+    )} · ${formatRelative(entry.at)} · ${OUTCOME_LABEL[entry.outcome]}`;
+
     body.append(title, meta);
-    li.append(direction, body);
-    list.append(li);
+    row.append(direction, body);
+    list.append(row);
   }
 }
 
@@ -210,7 +153,7 @@ function bindGlobalShortcuts(): void {
   must("#history-clear").addEventListener("click", () => {
     void confirmDialog({
       title: "Svuotare la cronologia?",
-      message: "Verranno eliminati solo i metadati dei trasferimenti. I file non sono mai stati salvati.",
+      message: "Vengono eliminati solo i metadati dei trasferimenti: nessun file è mai stato salvato.",
       confirmLabel: "Svuota",
       danger: true,
     }).then((confirmed) => {
@@ -223,39 +166,41 @@ function bindGlobalShortcuts(): void {
 
   window.addEventListener("hashchange", route);
 
-  // Evita che un drop fuori dall'area di invio apra il file nel browser.
+  // Un drop fuori dalle aree di invio non deve aprire il file nel browser.
   window.addEventListener("dragover", (event) => event.preventDefault());
   window.addEventListener("drop", (event) => event.preventDefault());
 
-  window.addEventListener("online", () => toast("Connessione ripristinata.", "ok"));
-  window.addEventListener("offline", () =>
-    toast("Sei offline: il trasferimento richiede una connessione attiva.", "error"),
-  );
+  window.addEventListener("offline", () => diagnostics.info("Dispositivo offline: il canale ottico continua a funzionare."));
+  window.addEventListener("online", () => diagnostics.info("Rete disponibile (non necessaria per il trasferimento)."));
 
   window.addEventListener("pagehide", () => {
-    sendScreen.dispose();
-    receiveScreen.dispose();
+    sendScreen.hide();
+    receiveScreen.hide();
   });
 }
 
 function warnEnvironment(): void {
-  if (!supportsWebRtc()) {
-    toast("Questo browser non supporta WebRTC: il trasferimento non può funzionare.", "error", 9000);
-    return;
-  }
   if (!isSecureContextAvailable()) {
-    toast("Apri LensDrop in HTTPS: senza contesto sicuro fotocamera e clipboard sono bloccati.", "error", 9000);
+    toast("Apri LensDrop in HTTPS: senza contesto sicuro la fotocamera è bloccata.", "error", 9000);
+    diagnostics.error("Contesto non sicuro: la fotocamera richiede HTTPS.");
     return;
   }
-  const local = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
-  if (local && !window.isSecureContext) {
-    toast("In locale usa localhost o HTTPS per attivare la fotocamera.", "error", 9000);
+  if (typeof navigator.mediaDevices?.getUserMedia !== "function") {
+    toast("Questo browser non espone la fotocamera: il trasferimento ottico non può funzionare.", "error", 9000);
+    diagnostics.error("getUserMedia non disponibile.");
+    return;
   }
+  diagnostics.ok("Ambiente pronto: fotocamera disponibile, contesto sicuro.");
 }
 
 export function startApp(): void {
+  if (booted) return;
+  booted = true;
+
   initTheme();
+  initDiagnostics();
   bindGlobalShortcuts();
+
   if (window.location.hash === "" || window.location.hash === "#") {
     window.location.hash = "#/";
   }

@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>LensDrop — trasferisci con uno sguardo</title>
+    <title>LensDrop — passa i file con uno sguardo</title>
     <meta
       name="description"
-      content="LensDrop trasferisce file, foto, video, audio e testo tra due telefoni: inquadri il codice QR e i contenuti viaggiano direttamente, senza upload."
+      content="LensDrop trasferisce file, foto, video e testo tra due dispositivi usando solo lo schermo e la fotocamera: nessuna rete, nessun upload, nessun account."
     />
     <meta name="theme-color" content="#0b1020" media="(prefers-color-scheme: dark)" />
     <meta name="theme-color" content="#eef2ff" media="(prefers-color-scheme: light)" />
@@ -97,14 +97,6 @@
           <path d="M9 3h6v3l-1 2v3H10V8L9 6z" />
           <path d="M10 11h4v8.5a1.5 1.5 0 0 1-3 0z" />
         </symbol>
-        <symbol id="i-keyboard" viewBox="0 0 24 24">
-          <rect x="2.5" y="6.5" width="19" height="11" rx="3" />
-          <path d="M6.5 10h.01M10 10h.01M13.5 10h.01M17 10h.01M6.5 14h11" />
-        </symbol>
-        <symbol id="i-link" viewBox="0 0 24 24">
-          <path d="M10.5 13.5a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.6l-1.4 1.4" />
-          <path d="M13.5 10.5a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.6l1.4-1.4" />
-        </symbol>
         <symbol id="i-shield" viewBox="0 0 24 24">
           <path d="M12 3.5 19 6v5.5c0 4.6-3 7.8-7 9-4-1.2-7-4.4-7-9V6z" />
           <path d="m9 12 2.2 2.2L15.5 10" />
@@ -129,6 +121,27 @@
           <path d="M12 4.5 21 20H3z" />
           <path d="M12 10v4.5M12 17.5h.01" />
         </symbol>
+        <symbol id="i-play" viewBox="0 0 24 24">
+          <path d="M8 5.5 19 12 8 18.5z" />
+        </symbol>
+        <symbol id="i-pause" viewBox="0 0 24 24">
+          <path d="M9 5v14M15 5v14" />
+        </symbol>
+        <symbol id="i-expand" viewBox="0 0 24 24">
+          <path d="M9 4H4v5M15 4h5v5M15 20h5v-5M9 20H4v-5" />
+        </symbol>
+        <symbol id="i-bug" viewBox="0 0 24 24">
+          <rect x="7" y="8" width="10" height="12" rx="5" />
+          <path d="M10 5.5 12 8l2-2.5M3.5 12H7M17 12h3.5M3.5 17H7M17 17h3.5M6 7l1.8 1.8M18 7l-1.8 1.8" />
+        </symbol>
+        <symbol id="i-light" viewBox="0 0 24 24">
+          <circle cx="12" cy="10" r="4.5" />
+          <path d="M10 18h4M11 21h2" />
+        </symbol>
+        <symbol id="i-offline" viewBox="0 0 24 24">
+          <path d="M3 3l18 18" />
+          <path d="M8.5 15.5a5 5 0 0 1 6.4-.6M5 12a9 9 0 0 1 4-2.3M15.8 9.9A9 9 0 0 1 19 12M12 19h.01" />
+        </symbol>
       </defs>
     </svg>
 
@@ -139,536 +152,388 @@
       <span class="aurora__grain"></span>
     </div>
 
-    <div class="app">
-      <header class="app-bar">
-        <a class="brand" href="#/" aria-label="LensDrop, torna alla home">
-          <span class="brand__mark" aria-hidden="true">
-            <svg viewBox="0 0 32 32" fill="none">
-              <circle cx="16" cy="16" r="10.5" stroke="currentColor" stroke-width="1.6" opacity=".55" />
-              <circle cx="16" cy="16" r="6" stroke="currentColor" stroke-width="1.8" />
-              <path d="M16 3v6M16 23v6M3 16h6M23 16h6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
-            </svg>
-          </span>
-          <span class="brand__name">LensDrop</span>
+    <a class="skip-link" href="#main">Salta al contenuto</a>
+
+    <header class="app-bar">
+      <a class="brand" href="#/" aria-label="LensDrop, torna alla home">
+        <span class="brand__mark" aria-hidden="true">
+          <svg class="icon"><use href="#i-light" /></svg>
+        </span>
+        <span class="brand__name">LensDrop</span>
+      </a>
+      <nav class="app-bar__actions" aria-label="Azioni">
+        <button id="open-diagnostics" class="icon-btn" type="button" aria-label="Apri la diagnostica" title="Diagnostica">
+          <svg class="icon" aria-hidden="true"><use href="#i-bug" /></svg>
+          <span id="diagnostics-count" class="badge" hidden>0</span>
+        </button>
+        <a class="icon-btn" href="#/history" aria-label="Cronologia" title="Cronologia">
+          <svg class="icon" aria-hidden="true"><use href="#i-history" /></svg>
         </a>
-        <nav class="app-bar__actions" aria-label="Azioni">
-          <button id="theme-toggle" class="icon-btn" type="button" aria-label="Cambia tema" title="Cambia tema">
-            <svg class="icon" aria-hidden="true"><use href="#i-moon" /></svg>
-          </button>
-          <a class="icon-btn" href="#/history" aria-label="Cronologia trasferimenti" title="Cronologia">
-            <svg class="icon" aria-hidden="true"><use href="#i-history" /></svg>
-          </a>
-          <a class="icon-btn" href="#/settings" aria-label="Impostazioni" title="Impostazioni">
-            <svg class="icon" aria-hidden="true"><use href="#i-settings" /></svg>
-          </a>
-        </nav>
-      </header>
+        <a class="icon-btn" href="#/settings" aria-label="Impostazioni" title="Impostazioni">
+          <svg class="icon" aria-hidden="true"><use href="#i-settings" /></svg>
+        </a>
+        <button id="theme-toggle" class="icon-btn" type="button" aria-label="Cambia tema" title="Tema">
+          <svg class="icon" aria-hidden="true"><use href="#i-moon" /></svg>
+        </button>
+      </nav>
+    </header>
 
-      <main id="view">
-        <!-- ───────────────────────────── HOME ───────────────────────────── -->
-        <section id="screen-home" class="screen" aria-labelledby="home-title">
-          <div class="hero">
-            <p class="eyebrow">Trasferimento diretto tra dispositivi</p>
-            <h1 id="home-title" class="display">Passa tutto.<br /><span class="display__accent">Basta uno sguardo.</span></h1>
-            <p class="lede">
-              File, foto, video, audio, cartelle e testo passano da un telefono all'altro inquadrando un codice.
-              Nessun upload, nessun account.
-            </p>
-          </div>
-
-          <div class="choice-grid">
-            <a class="choice glass" href="#/send" data-nav="send">
-              <span class="choice__icon" aria-hidden="true"><svg class="icon icon--lg"><use href="#i-send" /></svg></span>
-              <span class="choice__body">
-                <span class="choice__title">Invia</span>
-                <span class="choice__desc">Scegli i contenuti e mostra il codice QR.</span>
-              </span>
-              <span class="choice__cta" aria-hidden="true">Genera codice</span>
+    <main id="main" class="shell">
+      <!-- ───────────────────────────── HOME ───────────────────────────── -->
+      <section id="screen-home" class="screen" aria-labelledby="home-title">
+        <div class="hero">
+          <p class="eyebrow"><span class="pill pill--quiet"><svg class="icon" aria-hidden="true"><use href="#i-offline" /></svg> Funziona in modalità aereo</span></p>
+          <h1 id="home-title" class="hero__title">Passa tutto.<br /><span class="hero__accent">Basta uno sguardo.</span></h1>
+          <p class="hero__lead">
+            File, cartelle, foto, video e testo passano da uno schermo alla fotocamera dell'altro telefono.
+            Nessun Wi-Fi, nessun Bluetooth, nessun server: solo luce e un codice QR animato.
+          </p>
+          <div class="hero__actions">
+            <a class="btn btn--primary btn--wide" href="#/send">
+              <svg class="icon" aria-hidden="true"><use href="#i-send" /></svg> Invia qualcosa
             </a>
-
-            <a class="choice glass" href="#/receive" data-nav="receive">
-              <span class="choice__icon" aria-hidden="true"><svg class="icon icon--lg"><use href="#i-camera" /></svg></span>
-              <span class="choice__body">
-                <span class="choice__title">Ricevi</span>
-                <span class="choice__desc">Inquadra il QR sull'altro telefono e accetta.</span>
-              </span>
-              <span class="choice__cta" aria-hidden="true">Apri fotocamera</span>
+            <a class="btn btn--ghost btn--wide" href="#/receive">
+              <svg class="icon" aria-hidden="true"><use href="#i-camera" /></svg> Ricevi con la fotocamera
             </a>
           </div>
+        </div>
 
-          <div class="how glass">
-            <h2 class="section-title">Come funziona</h2>
-            <ol class="steps">
-              <li class="step">
-                <span class="step__num">1</span>
-                <div><strong>Prepara l'invio</strong><p>Seleziona uno o più file, anche cartelle intere, oppure incolla del testo.</p></div>
-              </li>
-              <li class="step">
-                <span class="step__num">2</span>
-                <div><strong>Inquadra il codice</strong><p>Il secondo telefono legge il QR con la fotocamera: niente da digitare.</p></div>
-              </li>
-              <li class="step">
-                <span class="step__num">3</span>
-                <div><strong>Conferma e ricevi</strong><p>Il destinatario accetta, i dati viaggiano cifrati nel browser e ogni file è verificato con SHA-256.</p></div>
-              </li>
-            </ol>
-            <div class="assurance">
-              <span class="pill pill--quiet"><svg class="icon" aria-hidden="true"><use href="#i-lock" /></svg> DTLS crittografato</span>
-              <span class="pill pill--quiet"><svg class="icon" aria-hidden="true"><use href="#i-shield" /></svg> Nessun file sui server</span>
-              <span class="pill pill--quiet"><svg class="icon" aria-hidden="true"><use href="#i-refresh" /></svg> Codice a scadenza</span>
-            </div>
+        <div class="choice-grid">
+          <a class="choice glass" href="#/send">
+            <span class="choice__icon"><svg class="icon icon--lg" aria-hidden="true"><use href="#i-send" /></svg></span>
+            <span class="choice__body">
+              <span class="choice__title">Sono io che invio</span>
+              <span class="choice__desc">Scegli i contenuti, lo schermo diventa un flusso di codici QR.</span>
+            </span>
+            <span class="choice__cta" aria-hidden="true">Inizia</span>
+          </a>
+          <a class="choice glass" href="#/receive">
+            <span class="choice__icon"><svg class="icon icon--lg" aria-hidden="true"><use href="#i-camera" /></svg></span>
+            <span class="choice__body">
+              <span class="choice__title">Sono io che ricevo</span>
+              <span class="choice__desc">Inquadra lo schermo dell'altro telefono e ricostruisci i file.</span>
+            </span>
+            <span class="choice__cta" aria-hidden="true">Apri camera</span>
+          </a>
+        </div>
+
+        <div class="glass panel">
+          <h2 class="section-title">Come funziona</h2>
+          <ol class="steps">
+            <li class="step">
+              <span class="step__num">1</span>
+              <div><strong>Scegli i contenuti</strong><p>File, cartelle intere, foto, video o semplice testo: nessun limite di formato.</p></div>
+            </li>
+            <li class="step">
+              <span class="step__num">2</span>
+              <div><strong>Lo schermo trasmette</strong><p>LensDrop trasforma i dati in una sequenza di QR animati, con codici di riparazione per i frame persi.</p></div>
+            </li>
+            <li class="step">
+              <span class="step__num">3</span>
+              <div><strong>L'altro telefono inquadra</strong><p>La fotocamera ricostruisce il contenuto e verifica lo SHA-256 prima di consegnarlo.</p></div>
+            </li>
+          </ol>
+          <div class="assurance">
+            <span class="pill pill--quiet"><svg class="icon" aria-hidden="true"><use href="#i-offline" /></svg> Zero rete</span>
+            <span class="pill pill--quiet"><svg class="icon" aria-hidden="true"><use href="#i-shield" /></svg> Nessun upload</span>
+            <span class="pill pill--quiet"><svg class="icon" aria-hidden="true"><use href="#i-lock" /></svg> Niente lascia il dispositivo</span>
           </div>
+        </div>
 
-          <details class="fineprint glass">
-            <summary>Come viaggiano davvero i dati?</summary>
-            <p>
-              LensDrop usa WebRTC: i contenuti passano direttamente tra i due browser quando la rete lo consente.
-              Il server PeerJS pubblico gestisce solo la segnalazione iniziale (qualche centinaio di byte). Se la rete
-              impedisce il collegamento diretto, il traffico passa da un relay TURN: nel dubbio, controlla il tipo di
-              connessione mostrato nell'app.
-            </p>
-          </details>
-        </section>
+        <details class="fineprint glass">
+          <summary>Quanto veloce è davvero?</summary>
+          <p>
+            Il limite fisico è la fotocamera: ogni QR porta da 520 a 1200 byte e servono diversi frame al secondo
+            per avere un flusso continuo. Nell'uso reale si viaggia tra 4 e 15 KB/s: una foto da 2 MB richiede
+            qualche minuto, un video lungo può richiedere molto tempo. L'app mostra sempre la stima prima di
+            partire, e non nasconde il costo.
+          </p>
+          <p>
+            Il primo caricamento della pagina richiede una connessione (per scaricare l'app e installarla come PWA).
+            Dopo, LensDrop funziona anche con Wi-Fi, dati e Bluetooth spenti: tra i due dispositivi non esiste
+            alcun canale di rete.
+          </p>
+        </details>
+      </section>
 
-        <!-- ───────────────────────────── INVIA ───────────────────────────── -->
-        <section id="screen-send" class="screen" aria-labelledby="send-title" hidden>
-          <div class="screen-head">
-            <a class="back-btn" href="#/" aria-label="Torna alla home"><svg class="icon" aria-hidden="true"><use href="#i-left" /></svg></a>
-            <div>
-              <p class="eyebrow" id="send-eyebrow">Passaggio 1 · Contenuti</p>
-              <h1 id="send-title" class="screen-title">Cosa vuoi inviare?</h1>
-            </div>
+      <!-- ───────────────────────────── INVIA ───────────────────────────── -->
+      <section id="screen-send" class="screen" aria-labelledby="send-title" hidden>
+        <div class="screen-head">
+          <a class="back-btn" href="#/" aria-label="Torna alla home"><svg class="icon" aria-hidden="true"><use href="#i-left" /></svg></a>
+          <div>
+            <p class="eyebrow" id="send-eyebrow">Passaggio 1 · Contenuti</p>
+            <h1 id="send-title" class="screen-title">Cosa vuoi inviare?</h1>
           </div>
+        </div>
 
-          <div id="send-select" class="stack">
-            <div class="glass panel">
-              <div id="dropzone" class="dropzone" role="button" tabindex="0" aria-label="Scegli file o trascinali qui">
-                <span class="dropzone__icon" aria-hidden="true"><svg class="icon icon--xl"><use href="#i-plus" /></svg></span>
-                <span class="dropzone__title">Aggiungi contenuti</span>
-                <span class="dropzone__hint">Trascina i file qui oppure tocca per scegliere</span>
-                <input id="file-input" class="visually-hidden" type="file" multiple />
-                <input id="folder-input" class="visually-hidden" type="file" webkitdirectory multiple />
-              </div>
-              <div class="action-row">
-                <button id="pick-files" class="btn btn--ghost" type="button">
-                  <svg class="icon" aria-hidden="true"><use href="#i-file" /></svg> File
-                </button>
-                <button id="pick-folder" class="btn btn--ghost" type="button">
-                  <svg class="icon" aria-hidden="true"><use href="#i-folder" /></svg> Cartella
-                </button>
-                <button id="add-text" class="btn btn--ghost" type="button">
-                  <svg class="icon" aria-hidden="true"><use href="#i-text" /></svg> Testo
-                </button>
-              </div>
-              <p class="hint">Qualsiasi formato. Nessun limite artificiale di estensione.</p>
-            </div>
-
-            <div class="glass panel">
-              <div class="panel-head">
-                <h2 class="section-title">Selezione</h2>
-                <span id="send-total" class="muted">Nessun contenuto</span>
-              </div>
-              <ul id="send-items" class="item-list" aria-live="polite"></ul>
-              <p id="send-empty" class="empty">Non hai ancora aggiunto nulla.</p>
-            </div>
-
-            <div class="sticky-action">
-              <button id="send-start" class="btn btn--primary btn--wide" type="button" disabled>
-                <svg class="icon" aria-hidden="true"><use href="#i-send" /></svg> Genera codice di sessione
-              </button>
-            </div>
-          </div>
-
-          <!-- Passaggio 2: accoppiamento -->
-          <div id="send-pair" class="stack" hidden>
-            <div class="glass panel pairing">
-              <p class="eyebrow">Passaggio 2 · Accoppiamento</p>
-              <h2 class="section-title">Inquadra questo codice</h2>
-              <div class="qr-shell">
-                <canvas id="send-qr" class="qr-canvas" width="280" height="280" role="img" aria-label="Codice QR della sessione"></canvas>
-                <div id="qr-expired" class="qr-expired" hidden>
-                  <svg class="icon icon--lg" aria-hidden="true"><use href="#i-refresh" /></svg>
-                  <span>Codice scaduto</span>
-                </div>
-              </div>
-              <button id="copy-code" class="code-chip" type="button" title="Copia il codice">
-                <span id="send-code" class="code-chip__value">—</span>
-                <svg class="icon" aria-hidden="true"><use href="#i-copy" /></svg>
-              </button>
-              <p class="hint">oppure apri il link sul secondo dispositivo</p>
-              <div class="action-row action-row--center">
-                <button id="copy-link" class="btn btn--ghost" type="button">
-                  <svg class="icon" aria-hidden="true"><use href="#i-link" /></svg> Copia link
-                </button>
-                <button id="share-link" class="btn btn--ghost" type="button" hidden>
-                  <svg class="icon" aria-hidden="true"><use href="#i-share" /></svg> Condividi
-                </button>
-                <button id="new-code" class="btn btn--ghost" type="button">
-                  <svg class="icon" aria-hidden="true"><use href="#i-refresh" /></svg> Nuovo codice
-                </button>
-              </div>
-              <div class="status-line" role="status">
-                <span class="status-dot" aria-hidden="true"></span>
-                <span id="send-status">Connessione al servizio di segnalazione…</span>
-              </div>
-              <div class="countdown">
-                <div class="countdown__bar"><span id="send-countdown-bar" style="width: 100%"></span></div>
-                <span id="send-countdown" class="muted">—</span>
-              </div>
-              <p id="send-warning" class="notice" hidden></p>
-            </div>
-            <div class="glass panel panel--compact">
-              <p class="muted"><strong>In attesa.</strong> Il codice vale 10 minuti e non è riutilizzabile.</p>
-              <button id="send-back" class="link-btn" type="button">Modifica la selezione</button>
-            </div>
-          </div>
-
-          <!-- Passaggio 3: trasferimento -->
-          <div id="send-progress" class="stack" hidden>
-            <div class="glass panel">
-              <div class="transfer-head">
-                <div>
-                  <p class="eyebrow">Passaggio 3 · Invio in corso</p>
-                  <h2 class="section-title" id="send-progress-title">Trasferimento</h2>
-                </div>
-                <span id="send-route" class="pill pill--quiet">Verifica percorso…</span>
-              </div>
-              <div class="big-progress">
-                <span id="send-percent" class="big-progress__value">0%</span>
-                <div class="progress" role="progressbar" aria-labelledby="send-progress-title" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="send-progress-bar">
-                  <span class="progress__fill" id="send-progress-fill"></span>
-                </div>
-                <div class="stat-row">
-                  <span><b id="send-bytes">0 B</b> / <span id="send-total-bytes">0 B</span></span>
-                  <span><b id="send-speed">—</b></span>
-                  <span>restano <b id="send-eta">—</b></span>
-                </div>
-                <p id="send-current" class="current-file">Preparazione…</p>
-              </div>
-              <ul id="send-progress-items" class="item-list item-list--compact"></ul>
-              <div class="action-row action-row--center">
-                <button id="send-cancel" class="btn btn--danger" type="button">
-                  <svg class="icon" aria-hidden="true"><use href="#i-x" /></svg> Annulla
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Passaggio 4: completato -->
-          <div id="send-done" class="stack" hidden>
-            <div class="glass panel result">
-              <span class="result__badge" aria-hidden="true"><svg class="icon icon--lg"><use href="#i-check" /></svg></span>
-              <h2 class="section-title">Invio completato</h2>
-              <p id="send-done-summary" class="muted"></p>
-              <div class="action-row action-row--center">
-                <button id="send-more" class="btn btn--primary" type="button">
-                  <svg class="icon" aria-hidden="true"><use href="#i-plus" /></svg> Invia altri contenuti
-                </button>
-                <button id="send-finish" class="btn btn--ghost" type="button">Termina sessione</button>
-              </div>
-            </div>
-          </div>
-
-          <p id="send-error" class="notice notice--error" hidden role="alert"></p>
-        </section>
-
-        <!-- ───────────────────────────── RICEVI ───────────────────────────── -->
-        <section id="screen-receive" class="screen" aria-labelledby="receive-title" hidden>
-          <div class="screen-head">
-            <a class="back-btn" href="#/" aria-label="Torna alla home"><svg class="icon" aria-hidden="true"><use href="#i-left" /></svg></a>
-            <div>
-              <p class="eyebrow" id="receive-eyebrow">Passaggio 1 · Scansione</p>
-              <h1 id="receive-title" class="screen-title">Inquadra il codice</h1>
-            </div>
-          </div>
-
-          <div id="receive-scan" class="stack">
-            <div class="glass panel">
-              <div class="scanner" id="scanner">
-                <video id="scanner-video" class="scanner__video" playsinline muted aria-label="Anteprima fotocamera"></video>
-                <div class="scanner__mask" aria-hidden="true">
-                  <span class="scanner__corner scanner__corner--tl"></span>
-                  <span class="scanner__corner scanner__corner--tr"></span>
-                  <span class="scanner__corner scanner__corner--bl"></span>
-                  <span class="scanner__corner scanner__corner--br"></span>
-                  <span class="scanner__beam"></span>
-                </div>
-                <div class="scanner__placeholder" id="scanner-placeholder">
-                  <svg class="icon icon--lg" aria-hidden="true"><use href="#i-camera" /></svg>
-                  <span>La fotocamera si attiva al tocco</span>
-                </div>
-              </div>
-              <div class="action-row">
-                <button id="start-camera" class="btn btn--primary" type="button">
-                  <svg class="icon" aria-hidden="true"><use href="#i-camera" /></svg> Attiva fotocamera
-                </button>
-                <button id="torch-toggle" class="btn btn--ghost" type="button" hidden>
-                  <svg class="icon" aria-hidden="true"><use href="#i-torch" /></svg> Torcia
-                </button>
-                <button id="scan-image" class="btn btn--ghost" type="button">
-                  <svg class="icon" aria-hidden="true"><use href="#i-image" /></svg> Da immagine
-                </button>
-                <input id="scan-image-input" class="visually-hidden" type="file" accept="image/*" />
-              </div>
-              <p id="scanner-status" class="status-line" role="status">
-                <span class="status-dot" aria-hidden="true"></span>
-                <span>Punta il codice QR del mittente all'interno della cornice.</span>
-              </p>
-              <button id="toggle-manual" class="link-btn" type="button" aria-expanded="false">
-                <svg class="icon" aria-hidden="true"><use href="#i-keyboard" /></svg> Inserisci il codice manualmente
-              </button>
-              <form id="manual-form" class="manual-form" hidden>
-                <label class="field">
-                  <span class="field__label">Codice di sessione</span>
-                  <input id="manual-code" class="field__input code-input" type="text" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="14" placeholder="XXXX-XXXX-XXXX" />
-                </label>
-                <button class="btn btn--primary" type="submit">Connetti</button>
-              </form>
-              <p id="receive-error" class="notice notice--error" hidden role="alert"></p>
-            </div>
-
-            <div class="glass panel panel--compact">
-              <p class="muted">
-                <svg class="icon" aria-hidden="true"><use href="#i-lock" /></svg>
-                La fotocamera serve solo a leggere il codice: nessuna immagine viene registrata o inviata.
-              </p>
-            </div>
-          </div>
-
-          <div id="receive-connecting" class="stack" hidden>
-            <div class="glass panel">
-              <p class="eyebrow">Passaggio 2 · Collegamento</p>
-              <div class="connecting">
-                <span class="spinner" aria-hidden="true"></span>
-                <p id="receive-connecting-status" class="muted">Apertura del canale sicuro…</p>
-              </div>
-              <button id="cancel-connect" class="btn btn--ghost" type="button">Annulla</button>
-            </div>
-          </div>
-
-          <div id="receive-confirm" class="stack" hidden>
-            <div class="glass panel">
-              <p class="eyebrow">Passaggio 3 · Conferma</p>
-              <h2 class="section-title">Il mittente vuole inviarti:</h2>
-              <p id="receive-offer-summary" class="muted"></p>
-              <ul id="receive-offer-items" class="item-list"></ul>
-              <div class="action-row action-row--center">
-                <button id="receive-accept" class="btn btn--primary" type="button">
-                  <svg class="icon" aria-hidden="true"><use href="#i-check" /></svg> Accetta e ricevi
-                </button>
-                <button id="receive-reject" class="btn btn--ghost" type="button">Rifiuta</button>
-              </div>
-              <p class="hint"><svg class="icon" aria-hidden="true"><use href="#i-shield" /></svg> Nessun file viene scaricato prima della tua conferma.</p>
-            </div>
-          </div>
-
-          <div id="receive-progress" class="stack" hidden>
-            <div class="glass panel">
-              <div class="transfer-head">
-                <div>
-                  <p class="eyebrow">Passaggio 4 · Ricezione</p>
-                  <h2 class="section-title" id="receive-progress-title">Sto ricevendo</h2>
-                </div>
-                <span id="receive-route" class="pill pill--quiet">Verifica percorso…</span>
-              </div>
-              <div class="big-progress">
-                <span id="receive-percent" class="big-progress__value">0%</span>
-                <div class="progress" role="progressbar" aria-labelledby="receive-progress-title" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="receive-progress-bar">
-                  <span class="progress__fill" id="receive-progress-fill"></span>
-                </div>
-                <div class="stat-row">
-                  <span><b id="receive-bytes">0 B</b> / <span id="receive-total-bytes">0 B</span></span>
-                  <span><b id="receive-speed">—</b></span>
-                  <span>restano <b id="receive-eta">—</b></span>
-                </div>
-                <p id="receive-current" class="current-file">Preparazione…</p>
-              </div>
-              <ul id="receive-progress-items" class="item-list item-list--compact"></ul>
-              <div class="action-row action-row--center">
-                <button id="receive-cancel" class="btn btn--danger" type="button">
-                  <svg class="icon" aria-hidden="true"><use href="#i-x" /></svg> Annulla
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div id="receive-done" class="stack" hidden>
-            <div class="glass panel">
-              <div class="result">
-                <span class="result__badge" aria-hidden="true"><svg class="icon icon--lg"><use href="#i-check" /></svg></span>
-                <h2 class="section-title">Contenuti ricevuti</h2>
-                <p id="receive-done-summary" class="muted"></p>
-              </div>
-              <ul id="receive-items" class="item-list item-list--rich"></ul>
-              <div class="action-row action-row--center">
-                <button id="receive-download-all" class="btn btn--primary" type="button">
-                  <svg class="icon" aria-hidden="true"><use href="#i-download" /></svg> Scarica tutti
-                </button>
-                <button id="receive-share-all" class="btn btn--ghost" type="button" hidden>
-                  <svg class="icon" aria-hidden="true"><use href="#i-share" /></svg> Condividi
-                </button>
-                <button id="receive-again" class="btn btn--ghost" type="button">Ricevi altri contenuti</button>
-              </div>
-              <p class="hint">I file restano solo in memoria finché non li scarichi: alla chiusura della pagina vengono eliminati.</p>
-            </div>
-          </div>
-        </section>
-
-        <!-- ───────────────────────────── JOIN DA LINK ───────────────────────────── -->
-        <section id="screen-join" class="screen" aria-labelledby="join-title" hidden>
-          <div class="screen-head">
-            <a class="back-btn" href="#/" aria-label="Torna alla home"><svg class="icon" aria-hidden="true"><use href="#i-left" /></svg></a>
-            <div>
-              <p class="eyebrow">Invito ricevuto</p>
-              <h1 id="join-title" class="screen-title">Collegati alla sessione</h1>
-            </div>
-          </div>
+        <div id="send-select" class="stack">
           <div class="glass panel">
-            <p class="muted">Un dispositivo ti ha invitato a ricevere dei contenuti.</p>
-            <div class="join-code">
-              <span id="join-code" class="code-chip__value">—</span>
+            <div id="dropzone" class="dropzone" role="button" tabindex="0" aria-label="Scegli file o trascinali qui">
+              <span class="dropzone__icon" aria-hidden="true"><svg class="icon icon--xl"><use href="#i-plus" /></svg></span>
+              <span class="dropzone__title">Aggiungi contenuti</span>
+              <span class="dropzone__hint">Trascina i file qui oppure tocca per scegliere</span>
+              <input id="file-input" class="visually-hidden" type="file" multiple />
+              <input id="folder-input" class="visually-hidden" type="file" webkitdirectory multiple />
             </div>
-            <p id="join-expiry" class="muted"></p>
+            <div class="action-row">
+              <button id="pick-files" class="btn btn--ghost" type="button"><svg class="icon" aria-hidden="true"><use href="#i-file" /></svg> File</button>
+              <button id="pick-folder" class="btn btn--ghost" type="button"><svg class="icon" aria-hidden="true"><use href="#i-folder" /></svg> Cartella</button>
+              <button id="add-text" class="btn btn--ghost" type="button"><svg class="icon" aria-hidden="true"><use href="#i-text" /></svg> Testo</button>
+            </div>
+            <p class="hint">Qualsiasi formato. I contenuti restano in memoria nel browser e non vengono mai caricati online.</p>
+          </div>
+
+          <div class="glass panel">
+            <div class="panel-head">
+              <h2 class="section-title">Selezione</h2>
+              <span id="send-total" class="muted">Nessun contenuto</span>
+            </div>
+            <ul id="send-items" class="item-list" aria-live="polite"></ul>
+            <p id="send-empty" class="empty">Non hai ancora aggiunto nulla.</p>
+          </div>
+
+          <div class="glass panel">
+            <div class="panel-head">
+              <h2 class="section-title">Densità dei codici</h2>
+              <span class="muted">byte per frame</span>
+            </div>
+            <div id="density-options" class="segmented" role="radiogroup" aria-label="Densità dei codici QR"></div>
+            <div class="panel-head panel-head--spaced">
+              <h2 class="section-title">Velocità del flusso</h2>
+              <span class="muted">frame al secondo</span>
+            </div>
+            <div id="speed-options" class="segmented" role="radiogroup" aria-label="Velocità del flusso"></div>
+            <p id="send-estimate" class="hint" aria-live="polite">Aggiungi un contenuto per vedere la stima.</p>
+          </div>
+
+          <div class="sticky-action">
+            <button id="send-start" class="btn btn--primary btn--wide" type="button" disabled>
+              <svg class="icon" aria-hidden="true"><use href="#i-play" /></svg> Avvia il flusso ottico
+            </button>
+          </div>
+        </div>
+
+        <div id="send-stream" class="stack" hidden>
+          <div class="glass panel stream-panel">
+            <div id="send-stage" class="stream-stage">
+              <canvas id="send-canvas" class="stream-canvas"></canvas>
+            </div>
+            <p id="send-stage-hint" class="hint hint--center">Tieni lo schermo luminoso e inquadra tutto il codice.</p>
+            <div class="status-line" role="status">
+              <span class="status-dot" aria-hidden="true"></span>
+              <span>Trasmissione attiva: non serve alcuna conferma dal destinatario.</span>
+            </div>
+            <dl class="stat-grid">
+              <div><dt>Frame</dt><dd id="send-frame-stats">—</dd></div>
+              <div><dt>Passata</dt><dd id="send-block-stats">—</dd></div>
+              <div class="stat-grid__wide"><dt>Sessione</dt><dd id="send-session-stats">—</dd></div>
+            </dl>
             <div class="action-row action-row--center">
-              <button id="join-connect" class="btn btn--primary" type="button">
-                <svg class="icon" aria-hidden="true"><use href="#i-link" /></svg> Collegati
+              <button id="send-play" class="btn btn--primary" type="button" data-state="playing" aria-label="Metti in pausa">
+                <svg class="icon" aria-hidden="true"><use href="#i-pause" /></svg>
+                <span id="send-play-label">Pausa</span>
               </button>
-              <a class="btn btn--ghost" href="#/">Annulla</a>
+              <button id="send-restart" class="btn btn--ghost" type="button">
+                <svg class="icon" aria-hidden="true"><use href="#i-refresh" /></svg> Ricomincia
+              </button>
+              <button id="send-fullscreen" class="btn btn--ghost" type="button">
+                <svg class="icon" aria-hidden="true"><use href="#i-expand" /></svg> Schermo intero
+              </button>
             </div>
-            <p id="join-error" class="notice notice--error" hidden role="alert"></p>
           </div>
-        </section>
 
-        <!-- ───────────────────────────── CRONOLOGIA ───────────────────────────── -->
-        <section id="screen-history" class="screen" aria-labelledby="history-title" hidden>
-          <div class="screen-head">
-            <a class="back-btn" href="#/" aria-label="Torna alla home"><svg class="icon" aria-hidden="true"><use href="#i-left" /></svg></a>
-            <div>
-              <p class="eyebrow">Solo sul tuo dispositivo</p>
-              <h1 id="history-title" class="screen-title">Cronologia</h1>
-            </div>
+          <div class="glass panel panel--compact">
+            <p class="muted">
+              <strong>Lascia scorrere il flusso.</strong> Se il destinatario perde dei frame, i simboli di riparazione
+              successivi colmano i buchi senza dover ripartire da capo.
+            </p>
+            <button id="send-back" class="link-btn" type="button">Modifica la selezione</button>
           </div>
+        </div>
+      </section>
+
+      <!-- ───────────────────────────── RICEVI ───────────────────────────── -->
+      <section id="screen-receive" class="screen" aria-labelledby="receive-title" hidden>
+        <div class="screen-head">
+          <a class="back-btn" href="#/" aria-label="Torna alla home"><svg class="icon" aria-hidden="true"><use href="#i-left" /></svg></a>
+          <div>
+            <p class="eyebrow" id="receive-eyebrow">Inquadra il flusso QR</p>
+            <h1 id="receive-title" class="screen-title">Inquadra il codice</h1>
+          </div>
+        </div>
+
+        <div id="receive-scan" class="stack">
           <div class="glass panel">
-            <ul id="history-list" class="item-list item-list--rich"></ul>
-            <p id="history-empty" class="empty">Nessun trasferimento ancora. La cronologia contiene solo nomi e dimensioni, mai i contenuti.</p>
-            <div class="action-row action-row--end">
-              <button id="history-clear" class="btn btn--ghost" type="button">Svuota cronologia</button>
+            <div id="scan-stage" class="scan-stage">
+              <video id="scan-video" class="scan-video" playsinline muted></video>
+              <div class="scan-reticle" aria-hidden="true"></div>
+              <p class="scan-overlay" id="scan-state">Fotocamera spenta.</p>
+            </div>
+            <div class="action-row action-row--center">
+              <button id="scan-start" class="btn btn--primary" type="button">
+                <svg class="icon" aria-hidden="true"><use href="#i-camera" /></svg> Attiva fotocamera
+              </button>
+              <button id="scan-stop" class="btn btn--ghost" type="button" hidden>
+                <svg class="icon" aria-hidden="true"><use href="#i-x" /></svg> Ferma
+              </button>
+              <button id="scan-torch" class="btn btn--ghost" type="button" aria-pressed="false" hidden>
+                <svg class="icon" aria-hidden="true"><use href="#i-torch" /></svg> Torcia
+              </button>
+            </div>
+            <p id="receive-hint" class="hint hint--center">Avvia la fotocamera e inquadra il flusso QR sull'altro telefono.</p>
+          </div>
+
+          <div id="receive-progress" class="glass panel" hidden>
+            <div class="transfer-head">
+              <div>
+                <p class="eyebrow">Ricostruzione in corso</p>
+                <h2 id="receive-headline" class="section-title">Cerco il codice…</h2>
+              </div>
+              <span id="receive-percent" class="big-progress__value">0%</span>
+            </div>
+            <div class="big-progress" role="progressbar" aria-labelledby="receive-headline" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+              <div id="receive-bar" class="big-progress__fill" style="width: 0%"></div>
+            </div>
+            <p id="receive-details" class="muted" aria-live="polite"></p>
+            <button id="receive-restart" class="link-btn" type="button">Azzera e riprova</button>
+          </div>
+        </div>
+
+        <div id="receive-result" class="stack" hidden>
+          <div class="glass panel">
+            <div class="transfer-head">
+              <div>
+                <p class="eyebrow">Verificato</p>
+                <h2 class="section-title">Contenuto ricevuto</h2>
+              </div>
+              <span class="pill pill--ok"><svg class="icon" aria-hidden="true"><use href="#i-check" /></svg> SHA-256</span>
+            </div>
+            <p id="receive-summary" class="muted"></p>
+            <ul id="receive-items" class="item-list"></ul>
+            <div class="action-row action-row--center">
+              <button id="receive-save-all" class="btn btn--primary" type="button">
+                <svg class="icon" aria-hidden="true"><use href="#i-download" /></svg> Salva tutti
+              </button>
+              <button id="receive-new" class="btn btn--ghost" type="button">
+                <svg class="icon" aria-hidden="true"><use href="#i-refresh" /></svg> Nuova ricezione
+              </button>
+            </div>
+            <p class="hint">I file restano in memoria finché non li salvi: chiudendo la scheda vanno persi.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ───────────────────────────── CRONOLOGIA ───────────────────────────── -->
+      <section id="screen-history" class="screen" aria-labelledby="history-title" hidden>
+        <div class="screen-head">
+          <a class="back-btn" href="#/" aria-label="Torna alla home"><svg class="icon" aria-hidden="true"><use href="#i-left" /></svg></a>
+          <div>
+            <p class="eyebrow">Solo metadati</p>
+            <h1 id="history-title" class="screen-title">Cronologia</h1>
+          </div>
+        </div>
+        <div class="glass panel">
+          <ul id="history-list" class="history-list"></ul>
+          <p id="history-empty" class="empty">Nessun trasferimento registrato.</p>
+          <div class="action-row">
+            <button id="history-clear" class="btn btn--ghost" type="button" disabled>
+              <svg class="icon" aria-hidden="true"><use href="#i-trash" /></svg> Svuota cronologia
+            </button>
+          </div>
+          <p class="hint">Nomi, dimensioni e ora: i contenuti non sono mai stati salvati.</p>
+        </div>
+      </section>
+
+      <!-- ───────────────────────────── IMPOSTAZIONI ───────────────────────────── -->
+      <section id="screen-settings" class="screen" aria-labelledby="settings-title" hidden>
+        <div class="screen-head">
+          <a class="back-btn" href="#/" aria-label="Torna alla home"><svg class="icon" aria-hidden="true"><use href="#i-left" /></svg></a>
+          <div>
+            <p class="eyebrow">Preferenze locali</p>
+            <h1 id="settings-title" class="screen-title">Impostazioni</h1>
+          </div>
+        </div>
+
+        <form id="settings-form" class="stack">
+          <div class="glass panel">
+            <h2 class="section-title">Tema</h2>
+            <div class="radio-row">
+              <label class="radio"><input type="radio" name="theme" value="auto" /><span>Automatico</span></label>
+              <label class="radio"><input type="radio" name="theme" value="light" /><span>Chiaro</span></label>
+              <label class="radio"><input type="radio" name="theme" value="dark" /><span>Scuro</span></label>
             </div>
           </div>
-        </section>
 
-        <!-- ───────────────────────────── IMPOSTAZIONI ───────────────────────────── -->
-        <section id="screen-settings" class="screen" aria-labelledby="settings-title" hidden>
-          <div class="screen-head">
-            <a class="back-btn" href="#/" aria-label="Torna alla home"><svg class="icon" aria-hidden="true"><use href="#i-left" /></svg></a>
-            <div>
-              <p class="eyebrow">Configurazione</p>
-              <h1 id="settings-title" class="screen-title">Impostazioni</h1>
+          <div class="glass panel">
+            <h2 class="section-title">Densità dei codici</h2>
+            <div class="radio-col">
+              <label class="radio"><input type="radio" name="density" value="520" /><span>Compatto · 520 B per frame (schermi lontani)</span></label>
+              <label class="radio"><input type="radio" name="density" value="700" /><span>Equilibrato · 700 B per frame</span></label>
+              <label class="radio"><input type="radio" name="density" value="1200" /><span>Denso · 1200 B per frame (più veloce)</span></label>
             </div>
           </div>
 
-          <form id="settings-form" class="stack">
-            <div class="glass panel">
-              <h2 class="section-title">Aspetto</h2>
-              <div class="segmented" role="radiogroup" aria-label="Tema">
-                <label class="segmented__option"><input type="radio" name="theme" value="auto" /> <span>Automatico</span></label>
-                <label class="segmented__option"><input type="radio" name="theme" value="light" /> <span>Chiaro</span></label>
-                <label class="segmented__option"><input type="radio" name="theme" value="dark" /> <span>Scuro</span></label>
-              </div>
+          <div class="glass panel">
+            <h2 class="section-title">Velocità del flusso</h2>
+            <div class="radio-col">
+              <label class="radio"><input type="radio" name="speed" value="4" /><span>Lenta · 4 fps</span></label>
+              <label class="radio"><input type="radio" name="speed" value="8" /><span>Normale · 8 fps</span></label>
+              <label class="radio"><input type="radio" name="speed" value="14" /><span>Veloce · 14 fps</span></label>
             </div>
-
-            <div class="glass panel">
-              <h2 class="section-title">Segnalazione</h2>
-              <p class="hint">Serve solo a mettere in contatto i due dispositivi: il server non vede i file.</p>
-              <div class="segmented" role="radiogroup" aria-label="Server di segnalazione">
-                <label class="segmented__option"><input type="radio" name="signaling-mode" value="cloud" /> <span>PeerJS Cloud</span></label>
-                <label class="segmented__option"><input type="radio" name="signaling-mode" value="custom" /> <span>Server proprio</span></label>
-              </div>
-              <div id="custom-signaling" class="field-grid" hidden>
-                <label class="field">
-                  <span class="field__label">Host</span>
-                  <input class="field__input" name="signaling-host" type="text" placeholder="peerjs.example.com" autocomplete="off" />
-                </label>
-                <label class="field">
-                  <span class="field__label">Porta</span>
-                  <input class="field__input" name="signaling-port" type="number" min="1" max="65535" inputmode="numeric" />
-                </label>
-                <label class="field">
-                  <span class="field__label">Path</span>
-                  <input class="field__input" name="signaling-path" type="text" placeholder="/" autocomplete="off" />
-                </label>
-                <label class="field">
-                  <span class="field__label">Key</span>
-                  <input class="field__input" name="signaling-key" type="text" placeholder="peerjs" autocomplete="off" />
-                </label>
-                <label class="switch"><input type="checkbox" name="signaling-secure" /> <span>Usa WSS / HTTPS</span></label>
-              </div>
-            </div>
-
-            <div class="glass panel">
-              <h2 class="section-title">Relay TURN (opzionale)</h2>
-              <p class="hint">
-                Se la rete blocca le connessioni dirette, un relay TURN può fare da ponte. Il traffico passerebbe dal
-                tuo relay, quindi usane uno di cui ti fidi. Le credenziali restano solo in questo browser.
-              </p>
-              <label class="switch"><input type="checkbox" name="turn-enabled" /> <span>Usa un relay TURN personale</span></label>
-              <div id="turn-fields" class="field-grid" hidden>
-                <label class="field">
-                  <span class="field__label">URL (separati da spazio)</span>
-                  <input class="field__input" name="turn-urls" type="text" placeholder="turn:turn.example.com:3478" autocomplete="off" />
-                </label>
-                <label class="field">
-                  <span class="field__label">Username</span>
-                  <input class="field__input" name="turn-username" type="text" autocomplete="off" />
-                </label>
-                <label class="field">
-                  <span class="field__label">Credenziale</span>
-                  <input class="field__input" name="turn-credential" type="password" autocomplete="off" />
-                </label>
-              </div>
-            </div>
-
-            <div class="glass panel">
-              <h2 class="section-title">Diagnostica</h2>
-              <ul id="diagnostics" class="diagnostics"></ul>
-            </div>
-
-            <div class="sticky-action">
-              <button class="btn btn--primary btn--wide" type="submit">Salva impostazioni</button>
-            </div>
-          </form>
-        </section>
-
-        <!-- ───────────────────────────── 404 ───────────────────────────── -->
-        <section id="screen-notfound" class="screen" hidden>
-          <div class="glass panel result">
-            <h1 class="screen-title">Pagina non trovata</h1>
-            <p class="muted">Il link non corrisponde a una schermata di LensDrop.</p>
-            <a class="btn btn--primary" href="#/">Torna alla home</a>
+            <label class="switch">
+              <input id="setting-keep-awake" type="checkbox" />
+              <span>Mantieni lo schermo acceso durante l'invio</span>
+            </label>
           </div>
-        </section>
-      </main>
 
-      <footer class="app-footer">
-        <span>LensDrop · trasferimenti Peer-to-Peer nel browser</span>
-        <a href="#/settings">Privacy e configurazione</a>
-      </footer>
-    </div>
+          <div class="sticky-action">
+            <button class="btn btn--primary btn--wide" type="submit">
+              <svg class="icon" aria-hidden="true"><use href="#i-check" /></svg> Salva impostazioni
+            </button>
+          </div>
+        </form>
+
+        <div class="glass panel">
+          <h2 class="section-title">Capacità del browser</h2>
+          <ul id="capabilities" class="capabilities"></ul>
+          <button id="open-diagnostics-form" class="btn btn--ghost" type="button">
+            <svg class="icon" aria-hidden="true"><use href="#i-bug" /></svg> Apri diagnostica
+          </button>
+        </div>
+      </section>
+
+      <!-- ───────────────────────────── 404 ───────────────────────────── -->
+      <section id="screen-notfound" class="screen" hidden>
+        <div class="glass panel">
+          <h1 class="screen-title">Pagina non trovata</h1>
+          <p class="muted">Il collegamento non porta a nessuna schermata di LensDrop.</p>
+          <a class="btn btn--primary" href="#/"><svg class="icon" aria-hidden="true"><use href="#i-left" /></svg> Torna alla home</a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="app-footer">
+      <p>LensDrop · trasferimento ottico nel browser · nessun dato lascia i tuoi dispositivi</p>
+      <p class="muted">Licenza MIT · <a href="#/settings">impostazioni</a> · <a href="#/history">cronologia</a></p>
+    </footer>
 
     <div id="toasts" class="toasts" role="status" aria-live="polite"></div>
 
     <dialog id="text-dialog" class="sheet">
       <form method="dialog" id="text-form">
-        <h2 class="section-title">Invia del testo</h2>
-        <p class="hint">Verrà trasferito come file <code>.txt</code> leggibile su qualsiasi dispositivo.</p>
+        <p class="eyebrow">Testo</p>
+        <h2 class="section-title">Cosa vuoi trasmettere?</h2>
+        <label class="field">
+          <span class="field__label">Nome del file (opzionale)</span>
+          <input id="text-name" class="field__input" type="text" autocomplete="off" placeholder="nota.txt" />
+        </label>
         <label class="field">
           <span class="field__label">Contenuto</span>
-          <textarea id="text-input" class="field__input field__input--area" rows="8" maxlength="200000" placeholder="Incolla qui il testo…"></textarea>
+          <textarea id="text-input" class="field__input field__input--area" rows="7" placeholder="Incolla qui il testo da inviare…"></textarea>
         </label>
-        <p id="text-count" class="hint">0 caratteri</p>
-        <div class="action-row action-row--end">
-          <button class="btn btn--ghost" value="cancel" type="submit" formnovalidate>Annulla</button>
-          <button id="text-confirm" class="btn btn--primary" value="confirm" type="submit">Aggiungi</button>
+        <div class="sheet__actions">
+          <button id="text-cancel" class="btn btn--ghost" type="button">Annulla</button>
+          <button id="text-save" class="btn btn--primary" type="button">Aggiungi</button>
         </div>
       </form>
     </dialog>
@@ -677,15 +542,47 @@
       <form method="dialog">
         <h2 id="confirm-title" class="section-title">Confermi?</h2>
         <p id="confirm-message" class="muted"></p>
-        <div class="action-row action-row--end">
+        <div class="sheet__actions">
           <button class="btn btn--ghost" value="cancel">Annulla</button>
           <button id="confirm-ok" class="btn btn--primary" value="confirm">Conferma</button>
         </div>
       </form>
     </dialog>
 
+    <dialog id="diagnostics" class="sheet sheet--wide">
+      <header class="sheet__head">
+        <div>
+          <p class="eyebrow">Supporto</p>
+          <h2 class="section-title">Diagnostica</h2>
+        </div>
+        <button id="diagnostics-close" class="icon-btn" type="button" aria-label="Chiudi la diagnostica">
+          <svg class="icon" aria-hidden="true"><use href="#i-x" /></svg>
+        </button>
+      </header>
+      <p class="hint">
+        Eventi della fotocamera, dei frame e del protocollo. Utile per capire perché un trasferimento non parte.
+        Il registro resta nella memoria della scheda e non viene inviato da nessuna parte.
+      </p>
+      <pre id="diagnostics-log" class="diagnostics-log" tabindex="0">Nessun evento registrato.</pre>
+      <div class="action-row action-row--center">
+        <button id="diagnostics-copy" class="btn btn--ghost" type="button">
+          <svg class="icon" aria-hidden="true"><use href="#i-copy" /></svg> Copia
+        </button>
+        <button id="diagnostics-save" class="btn btn--ghost" type="button">
+          <svg class="icon" aria-hidden="true"><use href="#i-download" /></svg> Scarica .txt
+        </button>
+        <button id="diagnostics-clear" class="btn btn--ghost" type="button">
+          <svg class="icon" aria-hidden="true"><use href="#i-trash" /></svg> Pulisci
+        </button>
+      </div>
+      <p class="hint">Suggerimento: dalla console è disponibile anche <code>lensdropDiagnostics.toText()</code>.</p>
+    </dialog>
+
     <noscript>
-      <div class="noscript">LensDrop richiede JavaScript e WebRTC per trasferire i contenuti.</div>
+      <div class="glass panel">
+        <h2 class="section-title">Serve JavaScript</h2>
+        <p class="muted">LensDrop decodifica i codici QR nel browser: senza JavaScript non può funzionare.</p>
+      </div>
     </noscript>
 
     <script type="module" src="/src/main.ts"></script>

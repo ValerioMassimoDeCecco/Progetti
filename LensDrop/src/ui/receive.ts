@@ -1,539 +1,369 @@
-/** Flusso di ricezione: scansione QR → conferma → ricezione → salvataggio. */
+/**
+ * Schermata "Ricevi": la fotocamera inquadra lo schermo del mittente e
+ * ricostruisce il contenuto. L'avanzamento mostrato è quello reale del
+ * decodificatore (blocchi risolti su blocchi totali), non una stima gonfiata.
+ */
 
-import { normalizeCode } from "../core/base32";
-import {
-  canShareFiles,
-  copyText,
-  downloadBlob,
-  formatBytes,
-  formatDuration,
-  shareFiles,
-} from "../core/files";
-import type { ItemMeta, OfferMessage } from "../core/protocol";
-import { GuestSession, type PeerHandle, type SessionStatus } from "../core/session";
+import { UI_UPDATE_INTERVAL_MS } from "../config";
+import type { BundleItem } from "../core/bundle";
+import { formatBytes, formatDuration, formatSpeed, isSecureContextAvailable } from "../core/files";
+import { OpticalReceiver } from "../core/optical";
 import { loadSettings } from "../core/settings";
-import { TransferReceiver, type ReceivedItem, type TransferProgress } from "../core/transfer";
-import { clear, confirmDialog, formatError, must, setButtonContent, setText, show, toast } from "./dom";
+import { confirmDialog, must, setText, show, toast } from "./dom";
+import { diagnostics } from "./diagnostics";
 import { addHistory } from "./history";
-import { createFileRow, createReceivedRow } from "./items";
-import { ProgressPanel } from "./progress";
-import { QrScanner } from "./scanner";
-
-type ReceiveView = "scan" | "connecting" | "confirm" | "progress" | "done";
+import { createReceivedRow } from "./items";
+import { OpticalScanner, type ScannerState } from "./scanner";
 
 export class ReceiveScreen {
-  private readonly scanView = must<HTMLElement>("#receive-scan");
-  private readonly connectingView = must<HTMLElement>("#receive-connecting");
-  private readonly confirmView = must<HTMLElement>("#receive-confirm");
-  private readonly progressView = must<HTMLElement>("#receive-progress");
-  private readonly doneView = must<HTMLElement>("#receive-done");
-  private readonly scannerEl = must<HTMLElement>("#scanner");
-  private readonly video = must<HTMLVideoElement>("#scanner-video");
-  private readonly scannerStatus = must<HTMLElement>("#scanner-status");
-  private readonly connectingStatus = must<HTMLElement>("#receive-connecting-status");
-  private readonly errorBox = must<HTMLElement>("#receive-error");
-  private readonly offerSummary = must<HTMLElement>("#receive-offer-summary");
-  private readonly offerList = must<HTMLUListElement>("#receive-offer-items");
-  private readonly receivedList = must<HTMLUListElement>("#receive-items");
-  private readonly doneSummary = must<HTMLElement>("#receive-done-summary");
-  private readonly routeBadge = must<HTMLElement>("#receive-route");
-  private readonly eyebrow = must<HTMLElement>("#receive-eyebrow");
-  private readonly manualForm = must<HTMLFormElement>("#manual-form");
-  private readonly manualInput = must<HTMLInputElement>("#manual-code");
-  private readonly cameraButton = must<HTMLButtonElement>("#start-camera");
-  private readonly torchButton = must<HTMLButtonElement>("#torch-toggle");
-  private readonly scanImageInput = must<HTMLInputElement>("#scan-image-input");
-  private readonly shareAllButton = must<HTMLButtonElement>("#receive-share-all");
-  private readonly downloadAllButton = must<HTMLButtonElement>("#receive-download-all");
-  private readonly progress = new ProgressPanel(
-    {
-      percent: must("#receive-percent"),
-      bar: must("#receive-progress-bar"),
-      fill: must("#receive-progress-fill"),
-      bytes: must("#receive-bytes"),
-      total: must("#receive-total-bytes"),
-      speed: must("#receive-speed"),
-      eta: must("#receive-eta"),
-      current: must("#receive-current"),
-      list: must("#receive-progress-items"),
-    },
-    "Ricezione",
-  );
-
-  private scanner: QrScanner | null = null;
-  private guest: GuestSession | null = null;
-  private receiver: TransferReceiver | null = null;
-  private handle: PeerHandle | null = null;
-  private offer: OfferMessage | null = null;
-  private items: ReceivedItem[] = [];
+  private readonly receiver = new OpticalReceiver();
+  private scanner: OpticalScanner | null = null;
+  private state: ScannerState = "idle";
+  private finishing = false;
+  private completed = false;
+  private lastUiAt = 0;
+  private samples: { at: number; bytes: number }[] = [];
   private previewUrls: string[] = [];
+  private records: BundleItem[] = [];
+  private mounted = false;
 
-  private view: ReceiveView = "scan";
-  private code = "";
-  private intentionalClose = false;
-  private connectToken = 0;
+  private readonly scanView = must<HTMLElement>("#receive-scan");
+  private readonly progressView = must<HTMLElement>("#receive-progress");
+  private readonly resultView = must<HTMLElement>("#receive-result");
+  private readonly video = must<HTMLVideoElement>("#scan-video");
+  private readonly stage = must<HTMLElement>("#scan-stage");
+  private readonly stateText = must<HTMLElement>("#scan-state");
+  private readonly startButton = must<HTMLButtonElement>("#scan-start");
+  private readonly stopButton = must<HTMLButtonElement>("#scan-stop");
+  private readonly torchButton = must<HTMLButtonElement>("#scan-torch");
+  private readonly percent = must<HTMLElement>("#receive-percent");
+  private readonly bar = must<HTMLElement>("#receive-bar");
+  private readonly details = must<HTMLElement>("#receive-details");
+  private readonly headline = must<HTMLElement>("#receive-headline");
+  private readonly resultList = must<HTMLElement>("#receive-items");
+  private readonly resultSummary = must<HTMLElement>("#receive-summary");
+  private readonly eyebrow = must<HTMLElement>("#receive-eyebrow");
 
-  constructor() {
-    this.bind();
+  mount(): void {
+    if (this.mounted) return;
+    this.mounted = true;
+
+    this.startButton.addEventListener("click", () => void this.startCamera());
+    this.stopButton.addEventListener("click", () => void this.stopCamera("richiesta dell'utente"));
+    this.torchButton.addEventListener("click", () => void this.toggleTorch());
+    must<HTMLButtonElement>("#receive-restart").addEventListener("click", () => this.resetTransfer());
+    must<HTMLButtonElement>("#receive-new").addEventListener("click", () => this.resetTransfer());
+    must<HTMLButtonElement>("#receive-save-all").addEventListener("click", () => this.saveAll());
+
+    diagnostics.info("Schermata di ricezione pronta: serve solo la fotocamera.");
+
+    if (!isSecureContextAvailable()) {
+      this.stateText.textContent = "Serve HTTPS per usare la fotocamera.";
+      this.startButton.disabled = true;
+      diagnostics.error("Contesto non sicuro: getUserMedia è disponibile solo in HTTPS.");
+    }
   }
 
   show(): void {
-    this.setView(this.view);
+    this.mount();
+    this.eyebrow.textContent = this.completed ? "Trasferimento completato" : "Inquadra il flusso QR";
+    if (this.state === "live") this.startButton.disabled = true;
   }
 
   hide(): void {
-    // Privacy: la fotocamera si spegne appena si lascia la schermata.
-    this.stopScanner();
+    void this.stopCamera("uscita dalla schermata");
   }
 
-  dispose(): void {
-    this.stopScanner();
-    this.resetConnection();
-    this.clearResults();
-  }
+  private async startCamera(): Promise<void> {
+    if (this.scanner?.isRunning) return;
 
-  // ------------------------------- Binding ---------------------------------
+    this.startButton.disabled = true;
+    this.stateText.textContent = "Attivazione fotocamera…";
 
-  private bind(): void {
-    this.cameraButton.addEventListener("click", () => void this.toggleCamera());
-    this.torchButton.addEventListener("click", () => void this.toggleTorch());
-    must("#scan-image").addEventListener("click", () => this.scanImageInput.click());
-    this.scanImageInput.addEventListener("change", () => {
-      const file = this.scanImageInput.files?.[0];
-      this.scanImageInput.value = "";
-      if (file) void this.scanFromImage(file);
-    });
-
-    const toggleManual = must<HTMLButtonElement>("#toggle-manual");
-    toggleManual.addEventListener("click", () => {
-      const opening = this.manualForm.hidden;
-      this.manualForm.hidden = !opening;
-      toggleManual.setAttribute("aria-expanded", String(opening));
-      if (opening) this.manualInput.focus();
-    });
-
-    this.manualInput.addEventListener("input", () => {
-      const raw = this.manualInput.value.toUpperCase().replace(/[^0-9A-Z]/g, "").slice(0, 12);
-      this.manualInput.value = raw.match(/.{1,4}/g)?.join("-") ?? raw;
-    });
-
-    this.manualForm.addEventListener("submit", (event) => {
-      event.preventDefault();
-      const code = normalizeCode(this.manualInput.value);
-      if (!code) {
-        this.showError("Il codice deve avere 12 caratteri (lettere e numeri, senza I, L, O, U).");
-        return;
-      }
-      this.clearError();
-      void this.connectWithCode(code, null);
-    });
-
-    must("#receive-accept").addEventListener("click", () => this.acceptOffer());
-    must("#receive-reject").addEventListener("click", () => this.rejectOffer());
-    must("#receive-cancel").addEventListener("click", () => void this.cancelTransfer());
-    must("#cancel-connect").addEventListener("click", () => {
-      this.intentionalClose = true;
-      this.resetConnection();
-      this.intentionalClose = false;
-      this.setView("scan");
-    });
-    must("#receive-again").addEventListener("click", () => {
-      if (!this.handle?.messenger.isOpen) {
-        this.resetConnection();
-        this.setView("scan");
-        toast("La sessione è terminata: inquadra un nuovo codice.", "error");
-        return;
-      }
-      this.setView("connecting");
-      setText(this.connectingStatus, "In attesa di nuovi contenuti dal mittente…");
-    });
-    this.downloadAllButton.addEventListener("click", () => this.downloadAll());
-    this.shareAllButton.addEventListener("click", () => void this.shareAll());
-  }
-
-  // ------------------------------- Fotocamera ------------------------------
-
-  private async toggleCamera(): Promise<void> {
-    if (this.scanner?.isRunning) {
-      this.stopScanner();
-      return;
-    }
-    this.clearError();
-    this.scanner = new QrScanner(this.video, {
-      onCode: (code, expiresAt) => {
-        this.stopScanner();
-        this.setScannerStatus("Codice letto.");
-        void this.connectWithCode(code, expiresAt);
-      },
+    const scanner = new OpticalScanner(this.video, {
+      onText: (text) => this.handleText(text),
       onError: (message) => {
-        this.showError(message);
-        this.setScannerStatus(message, "error");
+        this.stateText.textContent = message;
+        this.startButton.disabled = false;
+        toast(message, "error");
       },
-      onState: (state) => {
-        this.scannerEl.classList.toggle("is-live", state === "live");
-        this.cameraButton.disabled = state === "starting";
-        setButtonContent(this.cameraButton, "camera", state === "live" ? "Ferma fotocamera" : "Attiva fotocamera");
-        if (state === "live") {
-          this.setScannerStatus("Punta il codice QR del mittente all'interno della cornice.");
+      onState: (state) => this.handleState(state),
+      onStats: () => {
+        // Il ritmo di decodifica è utile soprattutto in diagnostica.
+        const stats = scanner.stats;
+        if (stats.hits + stats.misses > 0 && (stats.hits + stats.misses) % 40 === 0) {
+          diagnostics.frame(`Decodifica: ${stats.decodeRate.toFixed(1)} fps · ${stats.hits} letture, ${stats.misses} scarti.`);
         }
       },
     });
-    await this.scanner.start();
-    show(this.torchButton, this.scanner.isTorchAvailable);
+
+    this.scanner = scanner;
+    await scanner.start();
+
+    if (scanner.isRunning) {
+      this.startButton.disabled = true;
+      this.stopButton.hidden = false;
+      this.torchButton.hidden = !scanner.hasTorch;
+      show(this.progressView, true);
+    } else {
+      this.startButton.disabled = false;
+    }
   }
 
-  private stopScanner(): void {
-    this.scanner?.stop();
+  private async stopCamera(reason: string): Promise<void> {
+    if (!this.scanner) return;
+    const scanner = this.scanner;
     this.scanner = null;
-    this.scannerEl.classList.remove("is-live");
-    show(this.torchButton, false);
-    setButtonContent(this.cameraButton, "camera", "Attiva fotocamera");
-    this.cameraButton.disabled = false;
+    await scanner.stop();
+    this.stopButton.hidden = true;
+    this.torchButton.hidden = true;
+    this.startButton.disabled = false;
+    this.stateText.textContent = "Fotocamera spenta.";
+    diagnostics.info(`Scansione interrotta (${reason}).`);
   }
 
   private async toggleTorch(): Promise<void> {
-    if (!this.scanner) return;
-    const on = await this.scanner.toggleTorch();
-    this.torchButton.classList.toggle("btn--primary", on);
-    setButtonContent(this.torchButton, "torch", on ? "Torcia accesa" : "Torcia");
-    if (!this.scanner.isTorchAvailable) show(this.torchButton, false);
+    const scanner = this.scanner;
+    if (!scanner) return;
+    const on = await scanner.setTorch(!scanner.stats ? false : this.torchButton.dataset["on"] !== "true");
+    this.torchButton.dataset["on"] = String(on);
+    this.torchButton.setAttribute("aria-pressed", String(on));
+    this.torchButton.classList.toggle("is-active", on);
   }
 
-  private async scanFromImage(file: File): Promise<void> {
-    this.clearError();
-    try {
-      const result = await QrScanner.scanImage(file);
-      if (!result) {
-        this.showError("Nessun codice QR riconosciuto nell'immagine.");
+  private handleState(state: ScannerState): void {
+    this.state = state;
+    if (state === "live") {
+      this.stage.classList.add("is-live");
+      this.stateText.textContent = "Inquadra il codice sull'altro telefono.";
+    }
+    if (state === "idle") {
+      this.stage.classList.remove("is-live");
+    }
+  }
+
+  /** Ogni QR letto passa di qui: la logica di protocollo sta nel core. */
+  private handleText(text: string): void {
+    if (this.completed || this.finishing) return;
+
+    const result = this.receiver.accept(text);
+
+    switch (result.type) {
+      case "foreign":
+        this.note("QR di un altro tipo: continuo a cercare il flusso LensDrop.");
+        return;
+      case "invalid":
+        this.note(`Frame scartato: ${result.detail}`);
+        diagnostics.warn(`Frame non valido: ${result.detail}`);
+        return;
+      case "meta": {
+        const meta = this.receiver.meta;
+        if (meta) {
+          diagnostics.ok(
+            `Agganciato: "${meta.name}" · ${formatBytes(meta.size)} · ${meta.k} blocchi · SHA-256 ${meta.hash.slice(0, 12)}…`,
+          );
+        }
+        this.updateProgress(true);
         return;
       }
-      await this.connectWithCode(result.code, result.expiresAt);
-    } catch (error) {
-      this.showError(formatError(error));
-    }
-  }
-
-  private setScannerStatus(message: string, variant: "ok" | "error" | "idle" = "idle"): void {
-    const line = this.scannerStatus;
-    line.textContent = "";
-    const dot = document.createElement("span");
-    dot.className = "status-dot";
-    dot.setAttribute("aria-hidden", "true");
-    const text = document.createElement("span");
-    text.textContent = message;
-    line.append(dot, text);
-    line.classList.toggle("is-ok", variant === "ok");
-    line.classList.toggle("is-error", variant === "error");
-  }
-
-  // ------------------------------- Connessione -----------------------------
-
-  /** Avvia il collegamento a partire da un codice (QR, link o inserimento manuale). */
-  async connectWithCode(code: string, expiresAt: number | null): Promise<void> {
-    const normalized = normalizeCode(code);
-    if (!normalized) {
-      this.showError("Codice non valido.");
-      return;
-    }
-    if (expiresAt !== null && Number.isFinite(expiresAt) && Date.now() > expiresAt) {
-      this.showError("Questo invito è scaduto: chiedi al mittente di generare un nuovo codice.");
-      this.setView("scan");
-      return;
-    }
-
-    this.stopScanner();
-    this.clearError();
-    this.clearResults();
-    this.intentionalClose = true;
-    this.resetConnection();
-    this.intentionalClose = false;
-
-    this.code = normalized;
-    const token = ++this.connectToken;
-    this.setView("connecting");
-    setText(this.connectingStatus, "Apertura del canale sicuro…");
-
-    const guest = new GuestSession({
-      code: normalized,
-      settings: loadSettings(),
-      onStatus: (status) => this.onGuestStatus(status, token),
-      onClosed: (reason) => this.onConnectionClosed(reason),
-    });
-    this.guest = guest;
-
-    try {
-      const handle = await guest.connect();
-      if (token !== this.connectToken || this.guest !== guest) {
-        handle.messenger.close("Collegamento annullato.");
+      case "complete":
+        this.updateProgress(true);
+        void this.completeTransfer();
         return;
-      }
-      this.handle = handle;
-      setText(this.connectingStatus, "In attesa che il mittente proponga i contenuti…");
-      this.attachReceiver(handle);
-      void this.updateRoute(handle);
-    } catch (error) {
-      if (token !== this.connectToken || this.intentionalClose) return;
-      const message = formatError(error);
-      this.resetConnection();
-      this.showError(message);
-      this.setView("scan");
-      toast(message, "error");
+      default:
+        this.updateProgress();
     }
   }
 
-  private onGuestStatus(status: SessionStatus, token: number): void {
-    if (token !== this.connectToken) return;
-    if (this.view !== "connecting") return;
-    if (status.phase === "connecting") setText(this.connectingStatus, "Collegamento al dispositivo…");
-    if (status.phase === "authenticating") setText(this.connectingStatus, "Verifica del codice di sicurezza…");
-    if (status.phase === "error" && status.detail) {
-      this.showError(status.detail);
-      setText(this.connectingStatus, status.detail);
-    }
+  private note(message: string): void {
+    const hint = must<HTMLElement>("#receive-hint");
+    if (hint.textContent !== message) hint.textContent = message;
   }
 
-  private attachReceiver(handle: PeerHandle): void {
-    this.receiver?.dispose();
-    const receiver = new TransferReceiver(handle.messenger, this.code, {
-      onOffer: (offer) => this.handleOffer(offer),
-      onProgress: (progress: TransferProgress) => {
-        if (this.view === "progress") this.progress.update(progress);
-      },
-      onItem: (item) => this.handleReceivedItem(item),
-      onComplete: (summary) => this.finishReceiving(summary),
-      onCancel: (reason, local) => {
-        if (this.intentionalClose) return;
-        const message = local ? "Ricezione annullata." : reason;
-        toast(message, "error");
-        this.showError(message);
-        this.resetConnection();
-        this.setView("scan");
-      },
-      onError: (error) => {
-        if (this.intentionalClose) return;
-        this.showError(formatError(error));
-        toast(formatError(error), "error");
-      },
-      onClosed: (reason) => this.onConnectionClosed(reason),
-    });
-    this.receiver = receiver;
-  }
+  private updateProgress(force = false): void {
+    const now = performance.now();
+    if (!force && now - this.lastUiAt < UI_UPDATE_INTERVAL_MS) return;
+    this.lastUiAt = now;
 
-  private handleOffer(offer: OfferMessage): void {
-    if (this.items.length > 0 || this.previewUrls.length > 0) this.clearResults();
-    this.offer = offer;
-    clear(this.offerList);
-    for (const meta of offer.items) {
-      const row = createFileRow({ name: meta.name, size: meta.size, mime: meta.mime });
-      row.status.textContent = "";
-      this.offerList.append(row.row);
-    }
-    const label = `${offer.items.length} ${offer.items.length === 1 ? "contenuto" : "contenuti"} · ${formatBytes(offer.totalBytes)}`;
-    setText(this.offerSummary, `Totale: ${label}. Verifica i nomi prima di accettare.`);
-    this.setView("confirm");
-    toast("Proposta ricevuta: conferma per iniziare.", "ok");
-  }
+    const snapshot = this.receiver.snapshot;
+    const meta = this.receiver.meta;
 
-  private acceptOffer(): void {
-    if (!this.receiver || !this.offer) return;
-    this.progress.reset(this.offer.items, this.offer.totalBytes);
-    this.setView("progress");
-    this.progress.waiting("In attesa dei primi dati dal mittente…");
-    try {
-      this.receiver.accept();
-    } catch (error) {
-      this.showError(formatError(error));
-      toast(formatError(error), "error");
-    }
-  }
-
-  private rejectOffer(): void {
-    this.receiver?.reject("Il destinatario ha rifiutato il trasferimento.");
-    toast("Trasferimento rifiutato.");
-    this.intentionalClose = true;
-    this.resetConnection();
-    this.intentionalClose = false;
-    this.setView("scan");
-  }
-
-  private handleReceivedItem(item: ReceivedItem): void {
-    this.items.push(item);
-    this.progress.markItem(item.meta, "verificato", true);
-    toast(`Ricevuto: ${item.fileName}`, "ok");
-  }
-
-  private finishReceiving(summary: {
-    items: number;
-    totalBytes: number;
-    elapsedMs: number;
-    allVerified: boolean;
-  }): void {
-    this.progress.finish();
-    this.renderReceivedItems();
-    setText(
-      this.doneSummary,
-      `${summary.items} ${summary.items === 1 ? "contenuto" : "contenuti"} · ${formatBytes(summary.totalBytes)} · ${formatDuration(summary.elapsedMs)}${summary.allVerified ? " · integrità verificata" : ""}`,
-    );
-    addHistory({
-      direction: "in",
-      outcome: summary.allVerified ? "ok" : "error",
-      totalBytes: summary.totalBytes,
-      files: this.items.map((item) => ({ name: item.fileName, size: item.blob.size })),
-    });
-    this.setView("done");
-    toast("Ricezione completata.", "ok");
-  }
-
-  private onConnectionClosed(reason: string): void {
-    if (this.intentionalClose) return;
-    if (this.view === "done") {
-      toast(reason);
+    if (!meta) {
+      this.headline.textContent = "Cerco il codice…";
+      this.percent.textContent = "0%";
+      this.bar.style.width = "0%";
+      this.details.textContent = "Inquadra lo schermo che mostra il flusso animato.";
       return;
     }
-    this.showError(reason);
-    toast(reason, "error");
-    this.resetConnection();
-    this.setView("scan");
+
+    const ratio = Math.max(0, Math.min(1, snapshot.ratio));
+    this.headline.textContent = meta.name;
+    this.percent.textContent = `${Math.round(ratio * 100)}%`;
+    this.bar.style.width = `${ratio * 100}%`;
+    this.bar.parentElement?.setAttribute("aria-valuenow", String(Math.round(ratio * 100)));
+
+    const solvedBytes = Math.min(meta.size, Math.round(snapshot.solved * meta.blockSize));
+    this.samples.push({ at: Date.now(), bytes: solvedBytes });
+    this.samples = this.samples.filter((sample) => Date.now() - sample.at < 4000);
+    const first = this.samples[0];
+    const elapsed = first ? (Date.now() - first.at) / 1000 : 0;
+    const speed = elapsed > 0 && first ? Math.max(0, solvedBytes - first.bytes) / elapsed : 0;
+    const remaining = Math.max(0, meta.size - solvedBytes);
+    const eta = speed > 32 ? (remaining / speed) * 1000 : null;
+
+    const parts = [
+      `${snapshot.solved.toLocaleString("it-IT")} / ${meta.k.toLocaleString("it-IT")} blocchi`,
+      `${formatBytes(solvedBytes)} di ${formatBytes(meta.size)}`,
+    ];
+    if (speed > 32) parts.push(formatSpeed(speed));
+    if (eta !== null) parts.push(`mancano ${formatDuration(eta)}`);
+    if (snapshot.duplicates > 0) parts.push(`${snapshot.duplicates} ripetizioni`);
+    this.details.textContent = parts.join(" · ");
+
+    const hint = must<HTMLElement>("#receive-hint");
+    if (snapshot.solved === 0) {
+      hint.textContent = "Nessun blocco letto: avvicina il telefono, evita riflessi e riempi l'inquadratura.";
+    } else if (ratio < 1) {
+      hint.textContent = "Continua a inquadrare: i blocchi mancanti arrivano con i simboli di riparazione.";
+    }
   }
 
-  private async updateRoute(handle: PeerHandle): Promise<void> {
-    const route = await handle.channel.connectionRoute();
-    if (route === "relay") setText(this.routeBadge, "Tramite relay TURN");
-    else if (route === "direct") setText(this.routeBadge, "Connessione diretta P2P");
-    else setText(this.routeBadge, "Percorso non determinabile");
-  }
+  private async completeTransfer(): Promise<void> {
+    if (this.finishing || this.completed) return;
+    this.finishing = true;
 
-  private resetConnection(): void {
-    this.connectToken += 1;
-    this.receiver?.dispose();
-    this.receiver = null;
-    this.guest?.close();
-    this.guest = null;
-    this.handle = null;
-    this.offer = null;
-  }
+    diagnostics.ok("Tutti i blocchi sono stati ricostruiti: verifico l'integrità.");
+    this.headline.textContent = "Verifica SHA-256…";
+    this.percent.textContent = "100%";
+    this.bar.style.width = "100%";
 
-  // ------------------------------ Contenuti --------------------------------
+    try {
+      const items = await this.receiver.finish();
+      this.completed = true;
+      this.records = items;
 
-  private renderReceivedItems(): void {
-    clear(this.receivedList);
-    for (const item of this.items) {
-      const row = createReceivedRow(item, {
-        onDownload: (received) => this.downloadItem(received),
-        onShare: (received) => void this.shareItem(received),
-        onCopy: (text) => {
-          if (!text) {
-            toast("Testo non leggibile.", "error");
-            return;
-          }
-          void copyText(text).then((copied) => {
-            toast(copied ? "Testo copiato negli appunti." : "Copia non consentita dal browser.", copied ? "ok" : "error");
-          });
-        },
-        onPreviewUrl: (url) => this.previewUrls.push(url),
+      await this.stopCamera("trasferimento completato");
+
+      this.eyebrow.textContent = "Trasferimento completato";
+      must<HTMLElement>("#receive-title").textContent = "Contenuto ricevuto";
+      show(this.progressView, false);
+      show(this.resultView, true);
+
+      const total = items.reduce((sum, item) => sum + item.data.byteLength, 0);
+      this.resultSummary.textContent = `${items.length} element${items.length === 1 ? "o" : "i"} · ${formatBytes(
+        total,
+      )} · verificato con SHA-256`;
+      this.resultList.replaceChildren();
+      for (const item of items) {
+        this.resultList.append(createReceivedRow(item, this.handlers));
+      }
+
+      addHistory({
+        direction: "in",
+        outcome: "ok",
+        totalBytes: total,
+        files: items.map((item) => ({ name: item.name, size: item.data.byteLength })),
       });
-      this.receivedList.append(row);
-    }
-    show(this.shareAllButton, canShareFiles());
-    show(this.downloadAllButton, this.items.length > 0);
-  }
 
-  private downloadItem(item: ReceivedItem): void {
-    downloadBlob(item.blob, item.fileName);
-  }
-
-  private async shareItem(item: ReceivedItem): Promise<void> {
-    const file = new File([item.blob], item.fileName, {
-      type: item.meta.mime || "application/octet-stream",
-    });
-    const shared = await shareFiles([file], item.fileName);
-    if (!shared) toast("Condivisione non disponibile: usa Scarica.", "error");
-  }
-
-  private downloadAll(): void {
-    if (this.items.length === 0) return;
-    this.items.forEach((item, index) => {
-      window.setTimeout(() => downloadBlob(item.blob, item.fileName), index * 250);
-    });
-    if (this.items.length > 1) {
-      toast(`${this.items.length} download avviati: il browser potrebbe chiedere il permesso.`);
+      diagnostics.ok(`Ricevuti ${items.length} elementi (${formatBytes(total)}), checksum verificato.`);
+      toast("Trasferimento completato e verificato.", "ok");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Verifica non riuscita.";
+      diagnostics.error(`Verifica fallita: ${message}`);
+      this.finishing = false;
+      toast(message, "error");
+      await this.stopCamera("errore di verifica");
+      this.headline.textContent = "Verifica non riuscita";
+      this.details.textContent = `${message} — inquadra di nuovo il flusso per ripetere la ricezione.`;
     }
   }
 
-  private async shareAll(): Promise<void> {
-    if (this.items.length === 0) return;
-    const files = this.items.map(
-      (item) =>
-        new File([item.blob], item.fileName, { type: item.meta.mime || "application/octet-stream" }),
-    );
-    const shared = await shareFiles(files, "Contenuti ricevuti con LensDrop");
-    if (!shared) toast("Condivisione multipla non supportata: scarica i file.", "error");
+  private readonly handlers = {
+    onSave: (item: BundleItem) => this.saveItem(item),
+    onShare: (item: BundleItem) => void this.shareItem(item),
+    onCopy: (text: string) => {
+      void navigator.clipboard?.writeText(text).then(
+        () => toast("Testo copiato.", "ok"),
+        () => toast("Copia non consentita: salva il file.", "error"),
+      );
+    },
+    onPreview: (url: string) => this.previewUrls.push(url),
+  };
+
+  private saveItem(item: BundleItem): void {
+    const blob = new Blob([item.data], { type: item.mime || "application/octet-stream" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = item.name;
+    link.rel = "noopener";
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    diagnostics.info(`Salvato ${item.name} (${formatBytes(item.data.byteLength)}).`);
   }
 
-  private clearResults(): void {
-    this.items = [];
-    clear(this.offerList);
-    clear(this.receivedList);
+  private async shareItem(item: BundleItem): Promise<void> {
+    const file = new File([item.data], item.name, { type: item.mime || "application/octet-stream" });
+    if (!navigator.canShare?.({ files: [file] })) {
+      this.saveItem(item);
+      return;
+    }
+    try {
+      await navigator.share({ files: [file], title: item.name });
+    } catch {
+      diagnostics.warn("Condivisione annullata o non disponibile.");
+    }
+  }
+
+  private async saveAll(): Promise<void> {
+    if (this.records.length === 0) return;
+    if (this.records.length > 3) {
+      const confirmed = await confirmDialog({
+        title: "Salvare tutti i file?",
+        message: `Il browser chiederà conferma per ${this.records.length} download consecutivi.`,
+        confirmLabel: "Salva tutti",
+      });
+      if (!confirmed) return;
+    }
+    for (const item of this.records) {
+      this.saveItem(item);
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
+
+  private resetTransfer(): void {
     for (const url of this.previewUrls) URL.revokeObjectURL(url);
     this.previewUrls = [];
-    this.progress.reset([], 0);
-    show(this.downloadAllButton, false);
-    show(this.shareAllButton, false);
-    this.setView(this.view);
+    this.records = [];
+    this.receiver.reset();
+    this.completed = false;
+    this.finishing = false;
+    this.samples = [];
+    this.lastUiAt = 0;
+
+    this.resultList.replaceChildren();
+    show(this.resultView, false);
+    show(this.progressView, false);
+    show(this.scanView, true);
+    must<HTMLElement>("#receive-title").textContent = "Inquadra il codice";
+    this.eyebrow.textContent = "Inquadra il flusso QR";
+    this.headline.textContent = "Cerco il codice…";
+    this.percent.textContent = "0%";
+    this.bar.style.width = "0%";
+    this.details.textContent = "";
+    setText(must<HTMLElement>("#receive-hint"), "Avvia la fotocamera e inquadra il flusso QR sull'altro telefono.");
+    this.startButton.disabled = false;
+    diagnostics.info("Ricezione azzerata: pronta per un nuovo trasferimento.");
   }
 
-  private async cancelTransfer(): Promise<void> {
-    const confirmed = await confirmDialog({
-      title: "Annullare la ricezione?",
-      message: "I file già ricevuti in questa sessione andranno persi.",
-      confirmLabel: "Annulla ricezione",
-      cancelLabel: "Continua",
-      danger: true,
-    });
-    if (!confirmed) return;
-    this.intentionalClose = true;
-    this.receiver?.cancel("Ricezione annullata dal destinatario.");
-    this.resetConnection();
-    this.intentionalClose = false;
-    this.clearResults();
-    this.setView("scan");
-    toast("Ricezione annullata.");
+  /** Usato dai test di interfaccia per verificare il rendering dei risultati. */
+  renderResults(items: BundleItem[]): void {
+    this.records = items;
+    this.resultList.replaceChildren();
+    for (const item of items) this.resultList.append(createReceivedRow(item, this.handlers));
   }
 
-  private showError(message: string): void {
-    this.errorBox.textContent = message;
-    this.errorBox.hidden = false;
-  }
-
-  private clearError(): void {
-    this.errorBox.hidden = true;
-    this.errorBox.textContent = "";
-  }
-
-  private setView(view: ReceiveView): void {
-    this.view = view;
-    setText(
-      this.eyebrow,
-      view === "scan"
-        ? "Passaggio 1 · Scansione"
-        : view === "connecting"
-          ? "Passaggio 2 · Collegamento"
-          : view === "confirm"
-            ? "Passaggio 3 · Conferma"
-            : view === "progress"
-              ? "Passaggio 4 · Ricezione"
-              : "Completato",
-    );
-    show(this.scanView, view === "scan");
-    show(this.connectingView, view === "connecting");
-    show(this.confirmView, view === "confirm");
-    show(this.progressView, view === "progress");
-    show(this.doneView, view === "done");
-    if (view !== "scan") this.clearError();
-  }
-
-  /** Metadati dell'offerta corrente, esposti per test/diagnostica. */
-  get offeredItems(): ItemMeta[] {
-    return this.offer?.items ?? [];
+  get settingsSnapshot(): ReturnType<typeof loadSettings> {
+    return loadSettings();
   }
 }

@@ -1023,3 +1023,410 @@
     font-size: 0.78rem;
   }
 }
+
+/* ==========================================================================
+   Canale ottico: flusso QR, scansione, diagnostica.
+   Il QR deve restare il più grande e contrastato possibile: attorno a lui solo
+   vetro scuro, nessun riflesso e nessun elemento che rubi attenzione.
+   ========================================================================== */
+
+.badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--accent-2);
+  color: #101425;
+  font-size: 0.66rem;
+  font-weight: 700;
+  line-height: 17px;
+  text-align: center;
+}
+
+#open-diagnostics {
+  position: relative;
+}
+
+.panel-head--spaced {
+  margin-top: 6px;
+}
+
+.hint--center {
+  justify-content: center;
+  text-align: center;
+}
+
+/* ------------------------------ Trasmissione ----------------------------- */
+
+.stream-panel {
+  gap: 16px;
+}
+
+.stream-stage {
+  display: grid;
+  place-items: center;
+  padding: clamp(10px, 3vw, 18px);
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(120% 120% at 50% 0%, rgba(255, 255, 255, 0.08), transparent 65%),
+    rgba(4, 7, 14, 0.72);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+
+.stream-canvas {
+  width: min(100%, 78vh, 560px);
+  aspect-ratio: 1 / 1;
+  height: auto;
+  border-radius: 16px;
+  background: #ffffff;
+  image-rendering: pixelated;
+  box-shadow: 0 18px 45px -28px rgba(0, 0, 0, 0.9);
+}
+
+.stream-stage:fullscreen {
+  padding: 0;
+  border: 0;
+  background: #ffffff;
+}
+
+.stream-stage:fullscreen .stream-canvas {
+  width: min(100vw, 100vh);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.stat-grid > div {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: var(--glass-tint);
+}
+
+.stat-grid__wide {
+  grid-column: 1 / -1;
+}
+
+.stat-grid dt {
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.stat-grid dd {
+  margin: 2px 0 0;
+  font-size: 0.88rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-soft);
+}
+
+/* -------------------------------- Scanner -------------------------------- */
+
+.scan-stage {
+  position: relative;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: #05080f;
+  border: 1px solid var(--line);
+  aspect-ratio: 4 / 3;
+  display: grid;
+  place-items: center;
+}
+
+.scan-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #05080f;
+}
+
+.scan-stage:not(.is-live) .scan-video {
+  opacity: 0.25;
+}
+
+.scan-reticle {
+  position: absolute;
+  inset: 12%;
+  border-radius: 22px;
+  border: 1.5px solid rgba(255, 255, 255, 0.55);
+  box-shadow: 0 0 0 100vmax rgba(3, 6, 12, 0.35);
+  pointer-events: none;
+}
+
+.scan-stage.is-live .scan-reticle {
+  border-color: color-mix(in srgb, var(--accent) 85%, white);
+  animation: reticle-pulse 2.4s var(--ease) infinite;
+}
+
+.scan-reticle::before,
+.scan-reticle::after {
+  content: "";
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  border: 3px solid rgba(255, 255, 255, 0.9);
+  border-radius: 8px;
+}
+
+.scan-reticle::before {
+  top: -3px;
+  left: -3px;
+  border-right: 0;
+  border-bottom: 0;
+}
+
+.scan-reticle::after {
+  right: -3px;
+  bottom: -3px;
+  border-left: 0;
+  border-top: 0;
+}
+
+@keyframes reticle-pulse {
+  0%,
+  100% {
+    opacity: 0.75;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.scan-overlay {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 6px 14px;
+  max-width: calc(100% - 24px);
+  border-radius: 999px;
+  background: rgba(3, 6, 12, 0.66);
+  color: rgba(244, 247, 255, 0.92);
+  font-size: 0.78rem;
+  text-align: center;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+/* -------------------------------- Progresso ------------------------------ */
+
+.big-progress__fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  background-image: linear-gradient(90deg, var(--accent), var(--accent-2) 50%, var(--accent-3) 100%);
+  background-size: 200% 100%;
+  animation: flow 4s linear infinite;
+  transition: width 0.25s var(--ease);
+}
+
+/* ------------------------------- Impostazioni ---------------------------- */
+
+.radio-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.radio-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.radio {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: var(--glass-tint);
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+}
+
+.radio input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--accent);
+}
+
+.radio:has(input:checked) {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--ink);
+}
+
+.capabilities {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.capability {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: var(--glass-tint);
+}
+
+.capability__name {
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+}
+
+.capability__state {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--danger);
+  text-align: right;
+}
+
+.capability--ok .capability__state {
+  color: var(--success);
+}
+
+.capability__hint {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+/* -------------------------------- Diagnostica ---------------------------- */
+
+.sheet--wide {
+  width: min(680px, calc(100vw - 24px));
+}
+
+.sheet__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.sheet__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.diagnostics-log {
+  max-height: min(46vh, 360px);
+  margin: 12px 0 0;
+  padding: 12px 14px;
+  overflow: auto;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: rgba(4, 7, 14, 0.55);
+  color: var(--ink-soft);
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overscroll-behavior: contain;
+}
+
+:root[data-theme="light"] .diagnostics-log {
+  background: rgba(255, 255, 255, 0.6);
+  color: #0a1020;
+}
+
+@media (prefers-color-scheme: light) {
+  :root[data-theme="auto"] .diagnostics-log {
+    background: rgba(255, 255, 255, 0.6);
+    color: #0a1020;
+  }
+}
+
+/* --------------------------------- Segmenti ------------------------------ */
+
+.segmented__item {
+  flex: 1 1 0;
+  min-width: 96px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+  transition: background-color 0.25s var(--ease), color 0.25s var(--ease);
+}
+
+.segmented__item:hover {
+  color: var(--ink-soft);
+}
+
+.segmented__item.is-active {
+  background: color-mix(in srgb, var(--accent) 22%, var(--glass-tint));
+  color: var(--ink);
+  box-shadow: inset 0 1px 0 var(--glass-highlight);
+}
+
+.segmented__item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.segmented__label {
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.segmented__hint {
+  font-size: 0.68rem;
+  opacity: 0.8;
+  text-align: center;
+  line-height: 1.25;
+}
+
+@media (max-width: 520px) {
+  .segmented__hint {
+    display: none;
+  }
+
+  .stream-canvas {
+    width: min(100%, 62vh);
+  }
+
+  .scan-stage {
+    aspect-ratio: 3 / 4;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scan-stage.is-live .scan-reticle,
+  .big-progress__fill {
+    animation: none;
+  }
+}

@@ -1,115 +1,40 @@
+// @vitest-environment jsdom
+/** Impostazioni locali: valori ammessi, fallback e persistenza. */
+
 import { beforeEach, describe, expect, it } from "vitest";
-import {
-  DEFAULT_SETTINGS,
-  loadSettings,
-  resolveIceServers,
-  resolveSignaling,
-  saveSettings,
-  type AppSettings,
-} from "../src/core/settings";
 
-class MemoryStorage {
-  private data = new Map<string, string>();
-  getItem(key: string): string | null {
-    return this.data.get(key) ?? null;
-  }
-  setItem(key: string, value: string): void {
-    this.data.set(key, value);
-  }
-  removeItem(key: string): void {
-    this.data.delete(key);
-  }
-  clear(): void {
-    this.data.clear();
-  }
-}
-
-beforeEach(() => {
-  Object.defineProperty(globalThis, "localStorage", {
-    value: new MemoryStorage(),
-    configurable: true,
-    writable: true,
-  });
-});
-
-function withSettings(overrides: Partial<AppSettings>): AppSettings {
-  return { ...structuredClone(DEFAULT_SETTINGS), ...overrides };
-}
+import { DEFAULT_SETTINGS, loadSettings, saveSettings, updateSettings } from "../src/core/settings";
 
 describe("impostazioni", () => {
-  it("restituisce i valori predefiniti in assenza di dati", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("usa i valori predefiniti quando non c'è nulla di salvato", () => {
     expect(loadSettings()).toEqual(DEFAULT_SETTINGS);
   });
 
-  it("salva e ricarica le preferenze valide", () => {
-    const settings = withSettings({ theme: "dark" });
-    settings.turn = { enabled: true, urls: "turn:turn.example.com:3478", username: "u", credential: "p" };
-    saveSettings(settings);
-    const loaded = loadSettings();
-    expect(loaded.theme).toBe("dark");
-    expect(loaded.turn.urls).toBe("turn:turn.example.com:3478");
+  it("salva e rilegge le preferenze", () => {
+    saveSettings({ theme: "light", blockSize: 520, fps: 4, keepAwake: false });
+    expect(loadSettings()).toEqual({ theme: "light", blockSize: 520, fps: 4, keepAwake: false });
   });
 
-  it("ignora dati corrotti o parziali", () => {
-    localStorage.setItem("lensdrop.settings.v1", "{non-json");
-    expect(loadSettings()).toEqual(DEFAULT_SETTINGS);
-
+  it("ignora valori non ammessi", () => {
     localStorage.setItem(
-      "lensdrop.settings.v1",
-      JSON.stringify({ theme: "viola", signaling: { mode: "custom", port: -5 }, turn: [] }),
+      "lensdrop.settings.v2",
+      JSON.stringify({ theme: "arcobaleno", blockSize: 999, fps: 120, keepAwake: "sì" }),
     );
-    const loaded = loadSettings();
-    expect(loaded.theme).toBe("auto");
-    expect(loaded.signaling.mode).toBe("custom");
-    expect(loaded.signaling.port).toBe(DEFAULT_SETTINGS.signaling.port);
-    expect(loaded.turn.enabled).toBe(false);
+    expect(loadSettings()).toEqual(DEFAULT_SETTINGS);
   });
 
-  it("usa il server pubblico quando la modalità è cloud", () => {
-    const signaling = resolveSignaling(withSettings({}));
-    expect(signaling.mode).toBe("cloud");
-    expect(signaling.host).toBe("0.peerjs.com");
-    expect(signaling.secure).toBe(true);
+  it("sopravvive a JSON corrotto", () => {
+    localStorage.setItem("lensdrop.settings.v2", "{non-json");
+    expect(loadSettings()).toEqual(DEFAULT_SETTINGS);
   });
 
-  it("mantiene il server personalizzato quando configurato", () => {
-    const settings = withSettings({});
-    settings.signaling = {
-      mode: "custom",
-      host: "peer.example.org",
-      port: 443,
-      path: "/peerjs",
-      key: "chiave",
-      secure: true,
-    };
-    const signaling = resolveSignaling(settings);
-    expect(signaling.host).toBe("peer.example.org");
-    expect(signaling.path).toBe("/peerjs");
-  });
-
-  it("accetta solo URL TURN validi e ignora il resto", () => {
-    const settings = withSettings({});
-    settings.turn = {
-      enabled: true,
-      urls: "turn:turn.example.com:3478 turns:turn.example.com:5349 javascript:alert(1) http://x",
-      username: "utente",
-      credential: "segreto",
-    };
-    const servers = resolveIceServers(settings);
-    const custom = servers.at(-1);
-    expect(Array.isArray(custom?.urls)).toBe(true);
-    expect(custom?.urls).toEqual([
-      "turn:turn.example.com:3478",
-      "turns:turn.example.com:5349",
-    ]);
-    expect(custom?.username).toBe("utente");
-  });
-
-  it("non aggiunge TURN personalizzati se l'opzione è spenta", () => {
-    const settings = withSettings({});
-    settings.turn = { enabled: false, urls: "turn:turn.example.com:3478", username: "", credential: "" };
-    const servers = resolveIceServers(settings);
-    expect(servers.some((server) => String(server.urls).includes("turn.example.com"))).toBe(false);
-    expect(servers.length).toBeGreaterThan(0);
+  it("aggiorna solo le chiavi indicate", () => {
+    saveSettings(DEFAULT_SETTINGS);
+    const next = updateSettings({ fps: 14 });
+    expect(next.fps).toBe(14);
+    expect(next.blockSize).toBe(DEFAULT_SETTINGS.blockSize);
+    expect(loadSettings().fps).toBe(14);
   });
 });

@@ -1,17 +1,23 @@
 {
-  "name": "LensDrop — trasferisci con uno sguardo",
+  "name": "LensDrop — passa i file con uno sguardo",
   "short_name": "LensDrop",
-  "description": "Trasferisci file, foto, video, audio e testo tra due dispositivi inquadrando un codice QR. Collegamento diretto, nessun upload.",
+  "description": "Trasferisci file, foto, video e testo tra due dispositivi usando solo schermo e fotocamera: nessuna rete, nessun upload.",
   "lang": "it",
   "dir": "ltr",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "display_override": ["standalone", "minimal-ui"],
+  "display_override": [
+    "standalone",
+    "minimal-ui"
+  ],
   "orientation": "any",
   "background_color": "#06090f",
   "theme_color": "#06090f",
-  "categories": ["utilities", "productivity"],
+  "categories": [
+    "utilities",
+    "productivity"
+  ],
   "icons": [
     {
       "src": "icons/icon-192.png",
