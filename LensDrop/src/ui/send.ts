@@ -7,6 +7,7 @@
 import {
   APP_NAME,
   DENSITY_PRESETS,
+  HARDWARE_DECODE_FPS_THRESHOLD,
   MAX_ITEMS,
   MAX_PAYLOAD_BYTES,
   MAX_TEXT_LENGTH,
@@ -22,13 +23,15 @@ import {
   readBlobBytes,
   readTextPreview,
 } from "../core/files";
-import { OpticalSender } from "../core/optical";
+import { FrameStream } from "../core/frame-stream";
+import { effectiveFps } from "../core/pacing";
+import { LT_OVERHEAD_ESTIMATE, OpticalSender } from "../core/optical";
 import { loadSettings, updateSettings, type AppSettings } from "../core/settings";
 import { clear, el, must, show, toast } from "./dom";
 import { diagnostics } from "./diagnostics";
 import { addHistory } from "./history";
 import { describeFile, renderSendList, type SendItem } from "./items";
-import { renderFrame } from "./qr";
+import { describeCanvas, drawFrame, preferredPixelSize, renderFrameBuffer, warmUpQr, type FrameImage } from "./qr";
 
 type Phase = "select" | "stream";
 
@@ -39,14 +42,16 @@ export class SendScreen {
   private settings: AppSettings = loadSettings();
   private sender: OpticalSender | null = null;
   private phase: Phase = "select";
-  private playing = false;
-  private timer = 0;
-  private renderedFrames = 0;
+  private stream: FrameStream<FrameImage> | null = null;
   private version = 0;
   private wakeLock: WakeLockSentinel | null = null;
   private lastUiAt = 0;
   private busy = false;
   private itemSequence = 1;
+
+  // Canvas riusati dal pre-rendering: nessuna allocazione nel percorso critico.
+  private readonly spare: HTMLCanvasElement[] = [];
+  private lastUnderrunAt = 0;
 
   // Elementi stabili della pagina.
   private readonly selectView = must<HTMLElement>("#send-select");
@@ -119,13 +124,13 @@ export class SendScreen {
     });
 
     this.startButton.addEventListener("click", () => void this.start());
-    this.playButton.addEventListener("click", () => (this.playing ? this.pause("manuale") : this.resume()));
+    this.playButton.addEventListener("click", () => (this.stream?.isPlaying ? this.pause("manuale") : this.resume()));
     must<HTMLButtonElement>("#send-restart").addEventListener("click", () => void this.restart());
     must<HTMLButtonElement>("#send-fullscreen").addEventListener("click", () => void this.toggleFullscreen());
     must<HTMLButtonElement>("#send-back").addEventListener("click", () => this.backToSelection());
 
     document.addEventListener("visibilitychange", () => {
-      if (this.phase !== "stream" || !this.playing) return;
+      if (this.phase !== "stream" || !this.stream?.isPlaying) return;
       if (document.hidden) {
         this.pause("scheda in background");
         diagnostics.warn("Flusso in pausa: la scheda è passata in background.");
@@ -299,6 +304,7 @@ export class SendScreen {
       button.addEventListener("click", () => {
         this.settings = updateSettings({ fps: preset.fps });
         diagnostics.info(`Velocità: ${preset.label} (${preset.fps} fps).`);
+        this.stream?.setFps(preset.fps);
         this.syncControls();
         this.refreshEstimate();
       });
@@ -337,7 +343,9 @@ export class SendScreen {
     }
 
     const blocks = Math.ceil(bytes / this.settings.blockSize);
-    const throughput = this.settings.blockSize * this.settings.fps * 0.92;
+    // Stima prudente: frame di dati al netto dei metadati, diviso il sovraccarico
+    // dei codici LT misurato con perdite realistiche di frame.
+    const throughput = (this.settings.blockSize * this.settings.fps * (23 / 24)) / LT_OVERHEAD_ESTIMATE;
     const estimate = Math.round((bytes / throughput) * 1000);
     const compressible = compressionSupported() && looksCompressible(this.items);
     const parts = [
@@ -347,6 +355,9 @@ export class SendScreen {
     if (compressible) parts.push("compressione attiva");
     holder.textContent = parts.join(" · ");
 
+    if (this.settings.fps >= HARDWARE_DECODE_FPS_THRESHOLD) {
+      holder.textContent += " — a 30 fps il guadagno c'è solo se il destinatario decodifica in hardware (Android/Chrome).";
+    }
     if (bytes > WARN_BYTES) {
       holder.textContent += " — oltre 8 MB il trasferimento ottico richiede parecchi minuti.";
     }
@@ -364,7 +375,8 @@ export class SendScreen {
       const items: BundleItem[] = this.items.map((item) => ({ name: item.name, mime: item.mime, data: item.data }));
       const sender = await OpticalSender.create(items, { blockSize: this.settings.blockSize });
       this.sender = sender;
-      this.renderedFrames = 0;
+      this.version = 0;
+      this.spare.length = 0;
 
       diagnostics.ok(
         `Sessione ${sender.meta.sessionId} pronta: ${formatBytes(sender.meta.size)}${
@@ -383,7 +395,10 @@ export class SendScreen {
       }`;
       this.stageHint.textContent = "Tieni lo schermo luminoso e inquadra tutto il codice.";
 
-      await this.renderNext();
+      this.stream = this.createStream();
+      await warmUpQr();
+      describeCanvas(this.canvas);
+      await this.stream.prime(1);
       this.resume();
       await this.requestWakeLock();
     } catch (error) {
@@ -395,58 +410,105 @@ export class SendScreen {
     }
   }
 
-  private async renderNext(): Promise<void> {
-    const sender = this.sender;
-    if (!sender) return;
-    const text = sender.nextText();
-    this.renderedFrames += 1;
+  /**
+   * Il flusso vero e proprio: la logica di cadenza e pre-rendering vive in
+   * `FrameStream`, qui si forniscono solo testo, disegno e presentazione.
+   */
+  private createStream(): FrameStream<FrameImage> {
+    return new FrameStream<FrameImage>({
+      nextText: () => this.sender?.nextText() ?? "",
+      render: (text) => this.renderFrame(text),
+      present: (image) => this.presentFrame(image),
+      fps: this.settings.fps,
+      // Più fps richiesti, più margine serve per assorbire gli scatti del sistema.
+      bufferTarget: this.settings.fps >= HARDWARE_DECODE_FPS_THRESHOLD ? 8 : 5,
+      onPresent: () => this.updateStats(),
+      onUnderrun: () => this.reportUnderrun(),
+      onError: (error: unknown) => {
+        diagnostics.error(`Disegno del frame non riuscito: ${error instanceof Error ? error.message : String(error)}`);
+        this.pause("errore di disegno");
+      },
+    });
+  }
 
-    try {
-      const rendered = await renderFrame(this.canvas, text);
-      if (rendered.version !== this.version) {
-        this.version = rendered.version;
-        diagnostics.frame(
-          `QR versione ${rendered.version} (${rendered.modules}×${rendered.modules} moduli) per ${text.length} caratteri.`,
-        );
-      }
-    } catch (error) {
-      diagnostics.error(`Disegno del frame non riuscito: ${error instanceof Error ? error.message : String(error)}`);
-      this.pause("errore di disegno");
-      return;
-    }
+  /** Codifica un frame su un canvas di riserva (fuori dal percorso critico). */
+  private async renderFrame(text: string): Promise<FrameImage> {
+    const canvas = this.spare.pop() ?? document.createElement("canvas");
+    const image = await renderFrameBuffer(canvas, text, preferredPixelSize(this.canvas));
+    this.reportGeometry(image, text.length);
+    return image;
+  }
 
+  /** Copia il frame sul canvas visibile e ricicla il buffer. */
+  private presentFrame(image: FrameImage): void {
+    drawFrame(this.canvas, image);
+    this.spare.push(image.canvas);
+  }
+
+  private reportGeometry(image: FrameImage, textLength: number): void {
+    if (this.version === image.version) return;
+    this.version = image.version;
+    diagnostics.frame(
+      `QR versione ${image.version} · ${image.modules}×${image.modules} moduli · ${textLength} caratteri · ${image.pixelSize}px`,
+    );
+  }
+
+  private reportUnderrun(): void {
     const now = performance.now();
-    if (now - this.lastUiAt > 180) {
-      this.lastUiAt = now;
-      const snapshot = sender.snapshot;
-      this.frameStats.textContent = `frame ${snapshot.emitted.toLocaleString("it-IT")} · ${this.settings.fps} fps`;
-      this.blockStats.textContent = `passata ${snapshot.round === 0 ? "dati" : "riparazione"} · ${snapshot.emitted % Math.max(1, snapshot.totalFrames)}/${snapshot.totalFrames}`;
-    }
+    if (now - this.lastUnderrunAt < 3000) return;
+    this.lastUnderrunAt = now;
+    const stats = this.stream?.stats;
+    diagnostics.warn(
+      `Coda dei frame vuota (${stats?.underruns ?? 0} volte): questo dispositivo non sostiene ${this.settings.fps} fps, il flusso scende al ritmo possibile.`,
+    );
+  }
+
+  private updateStats(): void {
+    const now = performance.now();
+    if (now - this.lastUiAt < 180) return;
+    this.lastUiAt = now;
+
+    const sender = this.sender;
+    const stream = this.stream;
+    if (!sender || !stream) return;
+
+    const stats = stream.stats;
+    const rate = stats.measuredFps > 0 ? `${stats.measuredFps} fps` : `${this.settings.fps} fps`;
+    this.frameStats.textContent = `frame ${stats.presented.toLocaleString("it-IT")} · ${rate}`;
+
+    const snapshot = sender.snapshot;
+    const pass = snapshot.round === 0 ? "dati" : "riparazione";
+    const position = Math.min(snapshot.emitted, sender.meta.k);
+    this.blockStats.textContent = `passata ${pass} · ${position}/${sender.meta.k}`;
   }
 
   private resume(): void {
-    if (!this.sender || this.playing) return;
-    this.playing = true;
+    const stream = this.stream;
+    if (!stream || stream.isPlaying) return;
+
     this.playButton.setAttribute("aria-label", "Metti in pausa");
     this.playButton.dataset["state"] = "playing";
     must<HTMLElement>("#send-play-label").textContent = "Pausa";
 
-    const interval = Math.max(40, Math.round(1000 / this.settings.fps));
-    const loop = () => {
-      if (!this.playing) return;
-      void this.renderNext().then(() => {
-        if (this.playing) this.timer = window.setTimeout(loop, interval);
-      });
-    };
-    loop();
-    diagnostics.info(`Flusso avviato a ${this.settings.fps} fps.`);
+    const interval = stream.intervalMs;
+    const cost = stream.stats.renderCostMs;
+    if (cost > interval) {
+      diagnostics.warn(
+        `Ogni frame costa ${Math.round(cost)} ms ma l'intervallo richiesto è ${interval} ms: il flusso scenderà a circa ${Math.round(
+          effectiveFps(this.settings.fps, cost),
+        )} fps.`,
+      );
+    }
+    diagnostics.info(
+      `Flusso avviato a ${this.settings.fps} fps (intervallo ${interval} ms, ${Math.round(cost)} ms per frame).`,
+    );
+
+    stream.play();
   }
 
   private pause(reason: string): void {
-    if (!this.playing) return;
-    this.playing = false;
-    window.clearTimeout(this.timer);
-    this.timer = 0;
+    if (!this.stream?.isPlaying) return;
+    this.stream.pause();
     this.playButton.setAttribute("aria-label", "Riprendi il flusso");
     this.playButton.dataset["state"] = "paused";
     must<HTMLElement>("#send-play-label").textContent = "Riprendi";
@@ -487,12 +549,17 @@ export class SendScreen {
   /** Ferma il flusso e registra l'esito nella cronologia locale. */
   private stop(reason: string, navigate = true): void {
     this.pause(reason);
+
     const sender = this.sender;
+    const stats = this.stream?.stats;
+    this.stream?.stop();
+    this.stream = null;
     this.sender = null;
+    this.spare.length = 0;
     this.releaseWakeLock();
 
-    if (sender) {
-      const completePass = this.renderedFrames >= sender.meta.k;
+    if (sender && stats) {
+      const completePass = stats.produced >= sender.meta.k;
       addHistory({
         direction: "out",
         outcome: completePass ? "ok" : "cancelled",
@@ -500,12 +567,12 @@ export class SendScreen {
         files: this.items.map((item) => ({ name: item.name, size: item.size })),
       });
       diagnostics.info(
-        `Trasmissione fermata (${reason}) dopo ${this.renderedFrames} frame${
-          completePass ? ": almeno una passata completa trasmessa" : ""
-        }.`,
+        `Trasmissione fermata (${reason}) dopo ${stats.produced} frame preparati, ${stats.presented} mostrati, ${
+          stats.underruns
+        } attese${completePass ? "; almeno una passata completa trasmessa" : ""}.`,
       );
     }
-    this.renderedFrames = 0;
+
     if (navigate) this.startButton.disabled = this.items.length === 0;
   }
 

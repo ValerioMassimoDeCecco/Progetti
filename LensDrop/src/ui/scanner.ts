@@ -60,9 +60,19 @@ interface ScannerCallbacks {
   onStats?: (stats: ScannerStats) => void;
 }
 
-/** Larghezza massima del frame passato a jsQR: oltre si perde solo tempo. */
+/**
+ * Larghezza del frame passato a jsQR. È adattiva: se la decodifica costa troppo
+ * si riduce la risoluzione (più fps, meno dettaglio), se avanza tempo si
+ * risale. Con `BarcodeDetector` il valore non viene usato.
+ */
 const MAX_DECODE_WIDTH = 780;
-const MIN_DECODE_INTERVAL_MS = 33;
+const MIN_DECODE_WIDTH = 480;
+/** Nessun senso decodificare più di ~60 volte al secondo. */
+const MIN_DECODE_INTERVAL_MS = 15;
+/** Oltre questo costo per frame conviene abbassare la risoluzione. */
+const SLOW_DECODE_MS = 26;
+/** Sotto questo costo c'è margine per alzarla di nuovo. */
+const FAST_DECODE_MS = 12;
 
 export class OpticalScanner {
   private stream: MediaStream | null = null;
@@ -75,6 +85,8 @@ export class OpticalScanner {
   private busy = false;
   private lastDecodeAt = 0;
   private torchOn = false;
+  private decodeWidth = MAX_DECODE_WIDTH;
+  private lastDecodeMs = 0;
   private hits = 0;
   private misses = 0;
   private decodedTimestamps: number[] = [];
@@ -91,6 +103,15 @@ export class OpticalScanner {
   get hasTorch(): boolean {
     const capabilities = this.track?.getCapabilities?.() as { torch?: boolean } | undefined;
     return capabilities?.torch === true;
+  }
+
+  /** Costo dell'ultima decodifica, in millisecondi (diagnostica). */
+  get decodeCostMs(): number {
+    return this.lastDecodeMs;
+  }
+
+  get decodeResolution(): number {
+    return this.decodeWidth;
   }
 
   get stats(): ScannerStats {
@@ -172,7 +193,9 @@ export class OpticalScanner {
         facingMode: { ideal: "environment" },
         width: { ideal: 1280 },
         height: { ideal: 720 },
-        frameRate: { ideal: 30, max: 60 },
+        // 30 fps bastano per un flusso a 30 fps; il margine in più evita il
+        // battimento fra frequenza dello schermo e frequenza del sensore.
+        frameRate: { ideal: 60, max: 60 },
       },
     };
 
@@ -226,7 +249,10 @@ export class OpticalScanner {
     this.lastDecodeAt = now;
 
     try {
+      const startedAt = performance.now();
       const values = await this.decodeFrame();
+      this.lastDecodeMs = performance.now() - startedAt;
+      this.adaptResolution();
       for (const value of values) {
         if (!value) continue;
         this.hits += 1;
@@ -243,6 +269,23 @@ export class OpticalScanner {
     }
   }
 
+  /**
+   * Regola la risoluzione di decodifica in base al costo misurato: su telefoni
+   * lenti un frame più piccolo significa più frame letti al secondo, che è
+   * esattamente ciò che serve per stare dietro a un flusso veloce.
+   */
+  private adaptResolution(): void {
+    if (this.detector) return;
+    if (this.lastDecodeMs > SLOW_DECODE_MS && this.decodeWidth > MIN_DECODE_WIDTH) {
+      this.decodeWidth = Math.max(MIN_DECODE_WIDTH, this.decodeWidth - 100);
+      diagnostics.info(`Decodifica lenta (${Math.round(this.lastDecodeMs)} ms): risoluzione ridotta a ${this.decodeWidth}px.`);
+      return;
+    }
+    if (this.lastDecodeMs < FAST_DECODE_MS && this.decodeWidth < MAX_DECODE_WIDTH) {
+      this.decodeWidth = Math.min(MAX_DECODE_WIDTH, this.decodeWidth + 60);
+    }
+  }
+
   private async decodeFrame(): Promise<string[]> {
     if (this.detector) {
       const codes = await this.detector.detect(this.video);
@@ -256,7 +299,7 @@ export class OpticalScanner {
     const height = this.video.videoHeight;
     if (width === 0 || height === 0) return [];
 
-    const scale = Math.min(1, MAX_DECODE_WIDTH / width);
+    const scale = Math.min(1, this.decodeWidth / width);
     const targetWidth = Math.round(width * scale);
     const targetHeight = Math.round(height * scale);
 

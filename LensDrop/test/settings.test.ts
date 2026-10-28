@@ -25,6 +25,14 @@ describe("impostazioni", () => {
     expect(loadSettings()).toEqual(DEFAULT_SETTINGS);
   });
 
+  it("accetta i 30 fps ma rifiuta valori arbitrari", () => {
+    saveSettings({ ...DEFAULT_SETTINGS, fps: 30 });
+    expect(loadSettings().fps).toBe(30);
+
+    localStorage.setItem("lensdrop.settings.v2", JSON.stringify({ ...DEFAULT_SETTINGS, fps: 45 }));
+    expect(loadSettings().fps).toBe(DEFAULT_SETTINGS.fps);
+  });
+
   it("sopravvive a JSON corrotto", () => {
     localStorage.setItem("lensdrop.settings.v2", "{non-json");
     expect(loadSettings()).toEqual(DEFAULT_SETTINGS);

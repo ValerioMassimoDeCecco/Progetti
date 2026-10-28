@@ -27,7 +27,7 @@ const PREAMBLE_META_FRAMES = 4;
  * Sovraccarico tipico della coda LT quando la fotocamera perde frame: serve a
  * dare all'utente una stima prudente della durata, non ottimistica.
  */
-const LT_OVERHEAD_ESTIMATE = 1.35;
+export const LT_OVERHEAD_ESTIMATE = 1.35;
 
 export interface SenderOptions {
   blockSize: number;
